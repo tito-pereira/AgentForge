@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import sysconfig
 from importlib.metadata import version
 from pathlib import Path
 
@@ -35,7 +36,7 @@ def test_unknown_command_is_rejected(tmp_path):
 
 
 def test_installed_entry_point_and_metadata(tmp_path):
-    scripts = Path(sys.executable).parent
+    scripts = Path(sysconfig.get_path("scripts"))
     executable = scripts / ("agentforge.exe" if sys.platform == "win32" else "agentforge")
     result = subprocess.run(
         [str(executable), "--version"],

@@ -146,6 +146,17 @@ private planning URLs, personal paths, and broken local links. The project owner
 explicitly authorized a GitHub-provided private commit email for this repository.
 Remote publication and observed CI results are reported separately in the delivery
 report. POSIX shell setup was not executed locally.
+
+## CI portability correction
+
+The first public workflow passed on Linux and exposed a Windows test assumption.
+The installed-entry-point test looked beside the Python interpreter, which works
+inside the local virtual environment. A standard Windows installation puts
+console scripts in a separate directory. The test now uses
+`sysconfig.get_path("scripts")`, preserving its actual executable and metadata
+checks for both installation layouts. CLI help uses ASCII punctuation so its
+English description remains readable in Windows runner logs.
+
 ## Technical references
 
 These references were consulted for packaging, validation, lint, and CI during
