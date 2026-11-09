@@ -120,8 +120,9 @@ The original internal planning retains decision provenance. New test results,
 commit identifiers, repository visibility, publication, and remote CI status must
 be established by the Phase 0.1 run and its delivery report.
 
-License selection is pending an explicit decision by the project owner. Public
-visibility alone grants no open-source license, and no license is inferred here.
+At the time of Phase 0.1, license selection was pending an explicit decision by
+the project owner. The later MPL-2.0 decision recorded below supersedes that
+historical status.
 
 ## Phase 0.1 local verification
 
@@ -156,6 +157,43 @@ console scripts in a separate directory. The test now uses
 `sysconfig.get_path("scripts")`, preserving its actual executable and metadata
 checks for both installation layouts. CLI help uses ASCII punctuation so its
 English description remains readable in Windows runner logs.
+
+## Phase 0.2 decisions and verification plan
+
+On November 9, 2026, the project owner explicitly selected the Mozilla Public
+License 2.0, with SPDX identifier `MPL-2.0`. This approved choice supersedes the
+earlier pending-license status. Phase 0.2 applies the complete official license,
+appropriate source notices, packaging metadata, and documentation on a reviewed
+feature branch or pull request. Its publication on the default branch requires
+separate authorization and must be reported according to the actual branch state.
+
+The license text must remain complete and unmodified. Project-authored files use
+appropriate MPL notices or SPDX headers where comments are supported. Formats
+without comments retain a nearby accessible license notice. Existing copyright
+and third-party attribution remain accurate. No copyright-holder name or ownership
+transfer is inferred from this license choice. Official license and notice guidance
+are provided by [Mozilla's MPL 2.0 text](https://www.mozilla.org/en-US/MPL/2.0/) and
+[FAQ](https://www.mozilla.org/en-US/MPL/2.0/FAQ/).
+
+The verification plan requires fresh Python 3.12 virtual environments on Windows
+PowerShell and real Linux, using clean checkouts of the same commit. The README
+uses a normal independently installed Python and checks `sys.executable`,
+`sys.prefix`, and the checkout's `.venv` location. Tools run through the explicit
+venv interpreter. Optional shell activation is checked separately, without changing
+machine-wide PowerShell execution policies. The earlier application-runtime setup
+remains a historical Phase 0 observation.
+
+The workflow will create and use `.venv` explicitly on Windows and Ubuntu, then
+exercise installation, dependency checks, CLI help/version, the full test suite,
+Ruff lint, and formatting. Earlier runner-global CI results are separate evidence.
+Completion requires observed results for both OS environments and verified
+licensing changes on the review branch. New results, tool versions, commit SHA,
+branch/PR URLs, and limitations must be recorded after execution. At the time of
+preparing this plan, those Phase 0.2 execution results are pending.
+
+English is mandatory for all implementation phases, subphases, checkpoints,
+engineering reports, repository artifacts, and related implementation
+communication. Phase 1 remains subject to a subsequent owner instruction.
 
 ## Technical references
 

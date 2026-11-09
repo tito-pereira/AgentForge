@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """Entry point for python -m agentforge."""
 
 from agentforge.cli import main
