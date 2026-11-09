@@ -1,11 +1,17 @@
 # Foundation decisions
 
+The active product identity is Nukytera. This log preserves the identifiers used
+in the earlier Phase 0, 0.1, and 0.2 records, including the former AgentForge
+publication identity and commands. Those legacy strings describe history and
+must not be read as current setup instructions. The current naming contract is
+recorded in the Phase 0.3 section below.
+
 Record dated November 8, 2026, for scaffold `0.1.0`. The implementer made the
 following practical choices within the Phase 0 order. Their provenance is
 technical implementation; no individual human approval is attributed to them.
 Product requirements revision v0.2 targets Core v0.1.
 
-## Practical choices
+## Historical Phase 0 practical choices
 
 | Choice | Rationale and boundary |
 | --- | --- |
@@ -27,7 +33,7 @@ The policy contains `standard_version: "0.1"` and a `commandments` map with M1�
 Each entry declares `required: true` and a description. The policy version,
 scaffold version, and product requirements revision identify separate artifacts.
 
-## Boundaries and assumptions
+## Historical Phase 0 boundaries and assumptions
 
 The minimal schema checks the Standard structure. Tests and technical review
 assess code and the adequacy of evidence. The six Engines, eight contract schemas,
@@ -106,13 +112,13 @@ At the end of Phase 0, Git contained 19 new untracked files, with no commits,
 remote, or push. These are historical observations. Phase 1 remains subject to
 the subsequent authorization required by the plan.
 
-## Phase 0.1 publication decisions
+## Historical Phase 0.1 publication decisions
 
 The user authorized an English-only public repository named `AgentForge`,
 including a reviewed commit and push after publication prerequisites pass. This
 order supersedes the original Portuguese documentation requirement. The Python
-package name remains `agentforge`, and the foundation API and M1–M5 identifiers
-retain their meaning.
+package name remained `agentforge`, and the foundation API and M1–M5 identifiers
+retained their meaning.
 
 Public documentation uses self-contained local references. Private planning URLs,
 personal runtime paths, and private state are excluded from public materials.
@@ -124,7 +130,7 @@ At the time of Phase 0.1, license selection was pending an explicit decision by
 the project owner. The later MPL-2.0 decision recorded below supersedes that
 historical status.
 
-## Phase 0.1 local verification
+## Historical Phase 0.1 local verification
 
 The English-language tree was revalidated on November 8, 2026, on Windows with
 Python 3.12.14. The existing 33 tests passed again. Ruff lint and formatting checks
@@ -148,7 +154,7 @@ explicitly authorized a GitHub-provided private commit email for this repository
 Remote publication and observed CI results are reported separately in the delivery
 report. POSIX shell setup was not executed locally.
 
-## CI portability correction
+## Historical CI portability correction
 
 The first public workflow passed on Linux and exposed a Windows test assumption.
 The installed-entry-point test looked beside the Python interpreter, which works
@@ -158,7 +164,7 @@ console scripts in a separate directory. The test now uses
 checks for both installation layouts. CLI help uses ASCII punctuation so its
 English description remains readable in Windows runner logs.
 
-## Phase 0.2 decisions and verification plan
+## Historical Phase 0.2 decisions and verification plan
 
 On November 9, 2026, the project owner explicitly selected the Mozilla Public
 License 2.0, with SPDX identifier `MPL-2.0`. This approved choice supersedes the
@@ -194,6 +200,41 @@ preparing this plan, those Phase 0.2 execution results are pending.
 English is mandatory for all implementation phases, subphases, checkpoints,
 engineering reports, repository artifacts, and related implementation
 communication. Phase 1 remains subject to a subsequent owner instruction.
+
+## Phase 0.3 naming decision and migration contract
+
+On November 9, 2026, the project owner renamed the product to **Nukytera** and
+authorized the corresponding technical naming migration. This changes identity
+while retaining package version `0.1.0`, product requirements revision v0.2, and
+the Core v0.1 target. The five Engineering Commandments, six Engines, eight
+contract types, human approval rules, and MPL-2.0 remain unchanged.
+
+| Layer | Historical identifier | Required identifier |
+| --- | --- | --- |
+| Product brand | `AgentForge` | `Nukytera` |
+| Repository and workspace name | `AgentForge` | `Nukytera` |
+| Python distribution | `agentforge-core` | `nukytera-core` |
+| Python import package | `agentforge` | `nukytera` |
+| CLI console command | `agentforge` | `nukytera` |
+| Source directory | `src/agentforge/` | `src/nukytera/` |
+| Private-state convention | `.agentforge/` | `.nukytera/` |
+
+The migration retains only the new active package and CLI, without a legacy
+alias or parallel source tree. Existing Standard identifiers, field names,
+schema versions, contract identities, and behavior are preserved. Feature work
+and Phase 1 remain suspended pending an explicit owner instruction.
+
+The legacy `.agentforge/` ignore rule is retained intentionally to protect any
+older private local state. `.nukytera/` is the active convention. This safety
+exclusion does not introduce runtime state migration or persistence features.
+Earlier commands and publication names above remain historical evidence.
+
+Changes use a reviewed migration branch and pull request, with separate
+authorization required for merging into the default branch. The historical
+`phase-1-baseline` tag and existing commit history remain untouched. Repository
+URLs, folder moves, and fresh Windows/Linux results must be recorded only after
+they are observed. This decision records the naming contract rather than claiming
+completion of those operations.
 
 ## Technical references
 

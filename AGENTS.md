@@ -1,11 +1,14 @@
 # Agent instructions
 
-This repository contains the AgentForge Core foundation, package version `0.1.0`.
+This repository contains the Nukytera Core foundation, package version `0.1.0`.
 The product target is Core v0.1, based on product specification revision v0.2.
 Phase 0 established the foundation. Phase 0.1 covers the English-language migration,
 publication review, verification, and first public GitHub publication when authorized.
 Phase 0.2 verifies clean virtual environments on Windows and Linux and implements
 the project owner's approved MPL-2.0 license on a reviewed branch.
+Phase 0.3 is the authorized naming migration to Nukytera, `nukytera-core`, the
+`nukytera` package/CLI, and `.nukytera/` private state. Keep version `0.1.0`, the
+five Commandments, six Engines, eight contract types, and MPL-2.0 unchanged.
 
 ## Five mandatory Engineering Commandments
 
@@ -48,15 +51,18 @@ owner's preferred language.
 
 Inspect files, applicable instructions, and Git status before editing. Preserve
 existing work and operate only in the authorized directory. Follow the
-`src/agentforge/` layout and reuse the current implementation where appropriate.
+`src/nukytera/` layout and reuse the current implementation where appropriate.
 
 The foundation includes packaging, CLI `--help`/`--version`, a Standard policy with
 minimal structural validation, tests, lint, CI, and documentation. The six Engines,
 eight contract schemas, and operational persistence belong to later phases.
 Starting Phase 1 requires a subsequent instruction from the project owner.
+Feature development remains suspended during the naming migration. Use the new
+namespace exclusively for active source and commands. Preserve earlier identifiers
+only in clearly historical records and intentional legacy-state exclusions.
 
 The initial validator is
-`agentforge.standard.load_standard(policy_path, schema_path)`. It accepts explicit
+`nukytera.standard.load_standard(policy_path, schema_path)`. It accepts explicit
 paths to `policies/standard.yaml` and `schemas/standard.schema.json`. These are
 checkout files. Practical implementation choices are recorded in
 [docs/decisions.md](docs/decisions.md).
@@ -69,8 +75,8 @@ Use a Python 3.12 virtual environment and run the relevant commands. The
 ```text
 python -m pip install -e ".[dev]"
 python -m pip check
-python -m agentforge --help
-python -m agentforge --version
+python -m nukytera --help
+python -m nukytera --version
 python -m pytest
 python -m ruff check .
 python -m ruff format --check .
@@ -86,7 +92,7 @@ local execution from observed remote CI. Mark blocked or unexecuted checks as
 **NOT VERIFIED**, with the cause. Technical review must evaluate evidence
 independently of the implementing agent's assertions.
 
-Protect credentials, logs, private data, and `.agentforge/`. Avoid destructive
+Protect credentials, logs, private data, and `.nukytera/`. Avoid destructive
 operations. Remote creation, pushes, publication, and external permission changes
 require authorization for the specific action. Before a public commit or push,
 inspect the complete staged snapshot, secret/private-data scan results, author
@@ -98,5 +104,6 @@ Preserve the complete, unmodified [LICENSE](LICENSE), appropriate source notices
 SPDX headers, and accurate packaging metadata. Respect existing copyright and
 third-party notices, and never invent copyright-holder names or ownership
 transfers. Record license-related decisions and keep licensing guidance consistent
-with the official license. Phase 0.2 changes belong on a reviewed feature branch
-or pull request. Changing the default branch requires separate authorization.
+with the official license. Phase 0.3 changes belong on a reviewed migration branch
+and pull request. Merging into the default branch requires separate authorization.
+Preserve the historical `phase-1-baseline` tag and all existing commit history.

@@ -10,6 +10,8 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+.nukytera/
+# Legacy private state remains excluded during the naming migration.
 .agentforge/
 *.db
 *.db-*

@@ -6,7 +6,7 @@ import pytest
 import yaml
 from jsonschema import SchemaError, ValidationError
 
-from agentforge.standard import load_standard
+from nukytera.standard import load_standard
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "policies" / "standard.yaml"

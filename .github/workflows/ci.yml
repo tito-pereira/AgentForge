@@ -20,12 +20,12 @@ jobs:
             shell: bash
             base: python3.12
             python: ./.venv/bin/python
-            cli: ./.venv/bin/agentforge
+            cli: ./.venv/bin/nukytera
           - os: windows-latest
             shell: pwsh
             base: python
             python: ./.venv/Scripts/python.exe
-            cli: ./.venv/Scripts/agentforge.exe
+            cli: ./.venv/Scripts/nukytera.exe
     steps:
       - uses: actions/checkout@v7
         with:
@@ -57,10 +57,14 @@ jobs:
         run: ${{ matrix.python }} -m pip --version
       - name: Install package and development tools
         run: ${{ matrix.python }} -m pip install -e ".[dev]"
+      - name: Build renamed wheel
+        run: ${{ matrix.python }} -m pip wheel . --no-deps --wheel-dir .venv/wheelhouse
+      - name: Install built wheel
+        run: ${{ matrix.python }} -m pip install --no-index --no-deps --force-reinstall --find-links .venv/wheelhouse nukytera-core
       - name: Check dependency consistency
         run: ${{ matrix.python }} -m pip check
       - name: Verify CLI help
-        run: ${{ matrix.python }} -m agentforge --help
+        run: ${{ matrix.python }} -m nukytera --help
       - name: Verify console entry point
         run: ${{ matrix.cli }} --version
       - name: Run all tests

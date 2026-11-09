@@ -33,6 +33,12 @@ rules are in [AGENTS.md](AGENTS.md). Public engineering context is available thr
 the [README](README.md) and local documentation. Keep private planning references
 outside published artifacts.
 
+Phase 0.3 migrates the brand to Nukytera, the distribution to `nukytera-core`, the
+package and CLI to `nukytera`, and private state to `.nukytera/`, retaining version
+`0.1.0`. Keep the five Commandments, six Engines, eight contract types, and MPL-2.0
+unchanged. Feature development remains suspended. Active commands use the new
+namespace exclusively, while earlier identities remain in historical evidence.
+
 Inspect Git status, preserve existing work, protect secrets and private state, and
 respect the authorized directory. Mark results **NOT VERIFIED** when execution or
 evidence is missing. Local tests and explicit technical review provide the initial
@@ -46,6 +52,7 @@ visibility, and licensing checks in [AGENTS.md](AGENTS.md).
 The project owner selected Mozilla Public License 2.0 (`MPL-2.0`). Preserve the
 complete [LICENSE](LICENSE), source notices/SPDX headers, packaging metadata, and
 accurate copyright and third-party notices. Never invent copyright-holder names
-or ownership transfers. Record license-related decisions. Phase 0.2 changes belong
-on a reviewed feature branch or pull request. Default-branch changes require
-separate authorization.
+or ownership transfers. Record license-related decisions. Phase 0.3 changes belong
+on a reviewed migration branch and pull request. Merging into the default branch
+requires separate authorization. Preserve the historical `phase-1-baseline` tag
+and existing commit history.
