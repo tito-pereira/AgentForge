@@ -4,6 +4,8 @@ Baseline dated November 8, 2026. Product requirements revision v0.2 targets Core
 v0.1. The construction plan divides implementation into seven phases. Phase 0.1
 is the authorized English migration and public publication step between the
 foundation and Contract Kernel phases.
+Phase 0.3 is the authorized Nukytera naming migration. Feature development and
+Phase 1 remain suspended while the renamed foundation is reviewed and verified.
 
 ## Seven construction phases
 
@@ -20,7 +22,7 @@ foundation and Contract Kernel phases.
 The Contract Kernel is shared infrastructure for the six Engines. Phase 0
 prepares the foundation. Phase 1 implements contract schemas and persistence.
 The Standard policy and its minimal schema belong to the foundation.
-`.agentforge/` is reserved for future private state. The eight executable contract
+`.nukytera/` is reserved for future private state. The eight executable contract
 schemas and operational SQLite require a subsequent Phase 1 authorization.
 
 ## Phase 0 checkpoints
@@ -46,13 +48,26 @@ Phase 0 results are recorded in [decisions.md](decisions.md).
 | 0.1.B — Convert to English | Translate public human-readable materials, keep behavior and M1–M5 intact, and provide self-contained local documentation. |
 | 0.1.C — Publication safety and licensing | Review ignored files, intended commit content, secrets, author identity, ownership, and the pending license decision. |
 | 0.1.D — Revalidate Phase 0 | Execute installation, CLI, tests, lint, format, dependency, and documentation checks against the translated tree. |
-| 0.1.E — Publish AgentForge | After prerequisites pass, publish the reviewed tree to the authorized public GitHub repository and verify its commit, visibility, and actual CI status. |
+| 0.1.E — Publish the foundation | After prerequisites pass, publish the reviewed tree to the authorized public GitHub repository and verify its commit, visibility, and actual CI status. |
 | 0.1.F — Report and handoff | Report actual checkpoint status, results, Commandment evidence, publication facts, and remaining limitations. |
 
 English is required for repository artifacts, user-facing messages, documentation,
 test descriptions, commit messages, and public GitHub collaboration. Phase 0.1
 results must be established by its own validation and delivery report. Historical
 test counts and local checks remain tied to their original execution.
+
+## Phase 0.3 naming migration
+
+Migrate active branding, imports, distribution metadata, CLI commands, paths,
+documentation, and owned repository/workspace names to Nukytera. Keep package
+version `0.1.0`, Standard semantics, M1–M5, the six Engines, eight contract types,
+and MPL-2.0 unchanged. Verify the new namespace in clean Windows and Linux venvs,
+including packaging, CLI, Standard negative tests, and existing quality checks.
+
+Use a reviewed migration branch and pull request. Merging requires separate
+authorization. Preserve history, earlier execution evidence, and the immutable
+`phase-1-baseline` tag. The [decision log](decisions.md) records the naming map
+and intentional legacy references. Phase 1 remains suspended.
 
 ## Gates and the next phase
 

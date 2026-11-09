@@ -3,6 +3,8 @@
 Documentation baseline dated November 8, 2026. Product requirements revision v0.2
 targets Core v0.1. Scaffold version `0.1.0` implements the Phase 0 foundation.
 Phase 0.1 translates public materials into English and prepares public publication.
+The active product identity is Nukytera. Phase 0.3 changes naming while retaining
+the same requirements revision, product target, package version, and architecture.
 
 ## Six approved Engines
 
@@ -26,8 +28,8 @@ Validation returns findings to Workflow, and Report references the source record
 
 ## Implemented foundation
 
-The Python package uses the `src/agentforge/` layout. Its CLI displays help and
-version information. `agentforge.standard.load_standard(policy_path, schema_path)`
+The Python package uses the `src/nukytera/` layout. Its CLI displays help and
+version information. `nukytera.standard.load_standard(policy_path, schema_path)`
 loads the YAML policy with `safe_load` and validates its structure against JSON
 Schema, using explicit paths. The policy declares `standard_version: "0.1"` and
 contains M1–M5 in `commandments`, each with `required: true` and `description`.
@@ -46,7 +48,7 @@ Published contracts have immutable revisions. Progress and attempts belong to
 separate operational state. Local SQLite, Git references, and local artifacts will
 support history, integrity, and recovery.
 
-`.agentforge/` is reserved and excluded from Git. Persistence, transactions,
+`.nukytera/` is reserved and excluded from Git. Persistence, transactions,
 migrations, and recovery belong to later phases. Their coordination must account
 for SQLite and Git having separate transaction boundaries.
 

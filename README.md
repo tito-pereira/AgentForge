@@ -1,6 +1,6 @@
-# AgentForge Core
+# Nukytera Core
 
-AgentForge is a local framework for directing programming agents through clear
+Nukytera is a local framework for directing programming agents through clear
 instructions, explicit human decisions, versioned contracts, and independent
 verification. It aims to preserve engineering standards when working with
 different agents, initially Codex and Claude Code.
@@ -8,7 +8,13 @@ different agents, initially Codex and Claude Code.
 The current implementation is the **Phase 0 foundation**, with package version
 `0.1.0`. Phase 0.1 established English-language public development. Phase 0.2
 verifies clean Python virtual environments on Windows and Linux and applies MPL 2.0.
+Phase 0.3 migrates the product identity to Nukytera while preserving functionality.
 The product target remains Core v0.1, based on product specification revision v0.2.
+
+The brand is **Nukytera**, the Python distribution is `nukytera-core`, and the
+import package and CLI command are `nukytera`. Version `0.1.0` is retained for
+this naming migration. Use the new namespace for current commands. Earlier names
+and execution evidence are preserved as history in [decisions](docs/decisions.md).
 
 ## Current capabilities
 
@@ -22,7 +28,7 @@ The product target remains Core v0.1, based on product specification revision v0
 The six Engines and eight contract schemas are planned. Operational SQLite
 persistence, agent execution adapters, project negotiation, workflow execution,
 independent validation runners, reports, and experimental builds are future work.
-The CLI currently displays help and version information. The future AgentForge
+The CLI currently displays help and version information. The future Nukytera
 Bench will evaluate human direction of programming agents after the Core is ready.
 
 ## Five Engineering Commandments
@@ -55,8 +61,8 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -c "from pathlib import Path; import sys; print(sys.executable); assert sys.prefix != sys.base_prefix; assert Path(sys.prefix).resolve() == Path('.venv').resolve(); assert Path(sys.executable).absolute().is_relative_to(Path('.venv').resolve())"
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 .\.venv\Scripts\python.exe -m pip check
-.\.venv\Scripts\python.exe -m agentforge --help
-.\.venv\Scripts\agentforge.exe --version
+.\.venv\Scripts\python.exe -m nukytera --help
+.\.venv\Scripts\nukytera.exe --version
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m ruff format --check .
@@ -86,8 +92,8 @@ python3.12 -m venv .venv
 .venv/bin/python -c "from pathlib import Path; import sys; print(sys.executable); assert sys.prefix != sys.base_prefix; assert Path(sys.prefix).resolve() == Path('.venv').resolve(); assert Path(sys.executable).absolute().is_relative_to(Path('.venv').resolve())"
 .venv/bin/python -m pip install -e '.[dev]'
 .venv/bin/python -m pip check
-.venv/bin/python -m agentforge --help
-.venv/bin/agentforge --version
+.venv/bin/python -m nukytera --help
+.venv/bin/nukytera --version
 .venv/bin/python -m pytest
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
@@ -121,7 +127,7 @@ description for each one. The loader uses safe YAML parsing and JSON Schema
 From the repository root in PowerShell.
 
 ```powershell
-.\.venv\Scripts\python.exe -c "from agentforge.standard import load_standard; policy = load_standard('policies/standard.yaml', 'schemas/standard.schema.json'); print(', '.join(policy['commandments']))"
+.\.venv\Scripts\python.exe -c "from nukytera.standard import load_standard; policy = load_standard('policies/standard.yaml', 'schemas/standard.schema.json'); print(', '.join(policy['commandments']))"
 ```
 
 For POSIX, use `.venv/bin/python` as the executable. The API accepts explicit
@@ -133,7 +139,7 @@ invalid flags and structures, malformed YAML, and unsafe YAML constructors.
 
 | Path | Purpose |
 | --- | --- |
-| `src/agentforge/` | Package version, minimal CLI, and structural Standard loader. |
+| `src/nukytera/` | Package version, minimal CLI, and structural Standard loader. |
 | `policies/` | Versioned Standard policy. |
 | `schemas/` | Structural schema for the initial Standard. |
 | `tests/` | CLI, package metadata, and positive/negative policy checks. |
@@ -141,7 +147,7 @@ invalid flags and structures, malformed YAML, and unsafe YAML constructors.
 | `docs/` | Architecture, contract catalog, workflows, roadmap, and decisions. |
 | `.github/workflows/ci.yml` | Installation, CLI, lint, formatting, and test workflow. |
 
-`.agentforge/` is reserved for future private project state. `.gitignore` protects
+`.nukytera/` is reserved for future private project state. `.gitignore` protects
 local environments, private state, databases, caches, and common secret files.
 Review staged content before committing.
 
@@ -158,7 +164,9 @@ Review staged content before committing.
 | 6 — Evolution + Hardening | Product evolution, isolated builds, feedback, recovery, and robustness. |
 
 These are construction phases. Each requires bounded tasks, tests, documentation,
-and review. Phase 1 starts with a subsequent instruction from the project owner.
+and review. Phase 1 and feature development remain suspended pending a subsequent
+instruction from the project owner. The naming migration uses a reviewed pull
+request and requires separate authorization to merge into the default branch.
 
 ## Engineering documentation
 
@@ -174,7 +182,7 @@ requirements, binding technology and structural decisions, and human acceptance.
 
 ## License
 
-AgentForge is licensed under the [Mozilla Public License 2.0](LICENSE), with SPDX
+Nukytera is licensed under the [Mozilla Public License 2.0](LICENSE), with SPDX
 identifier `MPL-2.0`. Its file-level copyleft requires distributed covered source
 files, including modifications, to remain under MPL 2.0. Commercial use and
 distribution are permitted subject to the license conditions, including applicable
