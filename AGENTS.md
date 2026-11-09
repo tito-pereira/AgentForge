@@ -1,6 +1,7 @@
 # Agent instructions
 
-This repository contains the Nukytera Core foundation, package version `0.1.0`.
+This repository contains the Nukytera Core foundation and Contract Kernel,
+package version `0.1.0`.
 The product target is Core v0.1, based on product specification revision v0.2.
 Phase 0 established the foundation. Phase 0.1 covers the English-language migration,
 publication review, verification, and first public GitHub publication when authorized.
@@ -53,13 +54,12 @@ Inspect files, applicable instructions, and Git status before editing. Preserve
 existing work and operate only in the authorized directory. Follow the
 `src/nukytera/` layout and reuse the current implementation where appropriate.
 
-The foundation includes packaging, CLI `--help`/`--version`, a Standard policy with
-minimal structural validation, tests, lint, CI, and documentation. The six Engines,
-eight contract schemas, and operational persistence belong to later phases.
-Starting Phase 1 requires a subsequent instruction from the project owner.
-Feature development remains suspended during the naming migration. Use the new
-namespace exclusively for active source and commands. Preserve earlier identifiers
-only in clearly historical records and intentional legacy-state exclusions.
+Phase 1 implements eight contract schemas, exact references, authority checks,
+immutable revisions and local SQLite persistence as shared infrastructure. Use
+the documented [kernel API](docs/contracts.md) and [storage rules](docs/storage.md).
+Verify human and delegated approval through the trusted caller boundary. Preserve
+historical references when an active revision changes. Full Engines and Phase 2
+require subsequent execution orders from the project owner.
 
 The initial validator is
 `nukytera.standard.load_standard(policy_path, schema_path)`. It accepts explicit
@@ -80,6 +80,7 @@ python -m nukytera --version
 python -m pytest
 python -m ruff check .
 python -m ruff format --check .
+python examples/contract_kernel.py
 ```
 
 Verify imports and CLI behavior, valid Standard loading, and rejection of invalid,
@@ -104,6 +105,6 @@ Preserve the complete, unmodified [LICENSE](LICENSE), appropriate source notices
 SPDX headers, and accurate packaging metadata. Respect existing copyright and
 third-party notices, and never invent copyright-holder names or ownership
 transfers. Record license-related decisions and keep licensing guidance consistent
-with the official license. Phase 0.3 changes belong on a reviewed migration branch
+with the official license. Phase 1 changes belong on a reviewed feature branch
 and pull request. Merging into the default branch requires separate authorization.
 Preserve the historical `phase-1-baseline` tag and all existing commit history.

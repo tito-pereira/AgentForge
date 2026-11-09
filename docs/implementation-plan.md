@@ -4,8 +4,8 @@ Baseline dated November 8, 2026. Product requirements revision v0.2 targets Core
 v0.1. The construction plan divides implementation into seven phases. Phase 0.1
 is the authorized English migration and public publication step between the
 foundation and Contract Kernel phases.
-Phase 0.3 is the authorized Nukytera naming migration. Feature development and
-Phase 1 remain suspended while the renamed foundation is reviewed and verified.
+Phase 0.3 established the Nukytera naming migration. Phase 1 starts from the
+verified Phase 0.3 merge `830943bb`.
 
 ## Seven construction phases
 
@@ -22,8 +22,7 @@ Phase 1 remain suspended while the renamed foundation is reviewed and verified.
 The Contract Kernel is shared infrastructure for the six Engines. Phase 0
 prepares the foundation. Phase 1 implements contract schemas and persistence.
 The Standard policy and its minimal schema belong to the foundation.
-`.nukytera/` is reserved for future private state. The eight executable contract
-schemas and operational SQLite require a subsequent Phase 1 authorization.
+`.nukytera/` contains private SQLite state and local evidence.
 
 ## Phase 0 checkpoints
 
@@ -67,7 +66,22 @@ including packaging, CLI, Standard negative tests, and existing quality checks.
 Use a reviewed migration branch and pull request. Merging requires separate
 authorization. Preserve history, earlier execution evidence, and the immutable
 `phase-1-baseline` tag. The [decision log](decisions.md) records the naming map
-and intentional legacy references. Phase 1 remains suspended.
+and intentional legacy references.
+
+## Phase 1.0 checkpoints
+
+| Checkpoint | Acceptance evidence |
+| --- | --- |
+| A — Inventory and design | Reviewed baseline, authority and wire decisions, and source-to-test traceability. |
+| B — Schemas | Eight installed schemas with a shared envelope, valid examples and invalid shape tests. |
+| C — Integrity | Typed exact references, graph and obligation checks, approval provenance, and evidence consistency. |
+| D — Storage | SQLite migration, immutable history, transaction rollback, conflict-safe activation and reopen checks. |
+| E — Demonstration and documentation | A runnable eight-type example and self-contained API, authority and storage guides. |
+| F — Verification | Existing and new tests, wheel installation, lint and format on Windows and Ubuntu. |
+| G — Handoff | Independent review and verifiable evidence on the feature PR. |
+
+See the [design and traceability record](contract-kernel-design.md) for the mapping
+to approved architecture and PRD v0.2.
 
 ## Gates and the next phase
 
@@ -77,10 +91,10 @@ technologies, meaningful testing, accurate documentation, and readable code.
 Until Validation is implemented, automated tests and explicit technical review
 evaluate the evidence.
 
-Starting Phase 1 requires a subsequent user instruction and executable decisions
-on schemas, identity, invariants, authorization, and persistence, with positive
-and negative fixtures. Implementation decisions must preserve the approved
-contract responsibilities and human authority described in the local documents.
+Phase 1 publishes shared infrastructure for the six Engines. The project owner
+authorizes the merge and the start of Phase 2 separately. Project negotiation,
+execution adapters, scheduling, independent audits and report generation remain
+future Engine responsibilities.
 
 Once Project Manager, Workflow, a minimal adapter, and operational persistence
 exist, run a small isolated pilot. Repeat it once Validation and Report are

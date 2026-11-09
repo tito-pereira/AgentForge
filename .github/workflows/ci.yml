@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
-name: Foundation checks
+name: Core checks
 
 on: [push, pull_request]
 
@@ -57,7 +57,7 @@ jobs:
         run: ${{ matrix.python }} -m pip --version
       - name: Install package and development tools
         run: ${{ matrix.python }} -m pip install -e ".[dev]"
-      - name: Build renamed wheel
+      - name: Build package wheel
         run: ${{ matrix.python }} -m pip wheel . --no-deps --wheel-dir .venv/wheelhouse
       - name: Install built wheel
         run: ${{ matrix.python }} -m pip install --no-index --no-deps --force-reinstall --find-links .venv/wheelhouse nukytera-core

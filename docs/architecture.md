@@ -1,7 +1,8 @@
 # Operational architecture
 
 Documentation baseline dated November 8, 2026. Product requirements revision v0.2
-targets Core v0.1. Scaffold version `0.1.0` implements the Phase 0 foundation.
+targets Core v0.1. Package version `0.1.0` includes the Phase 0 foundation and
+Phase 1 Contract Kernel.
 Phase 0.1 translates public materials into English and prepares public publication.
 The active product identity is Nukytera. Phase 0.3 changes naming while retaining
 the same requirements revision, product target, package version, and architecture.
@@ -41,16 +42,18 @@ configuration. Tests, static analysis, and explicit technical review assess the
 actual code and evidence. Agent instructions document the applicable rules and
 authority.
 
-## Planned persistence and recovery
+## Shared Contract Kernel
 
-Phase 1 introduces the Contract Kernel, shared infrastructure for the six Engines.
-Published contracts have immutable revisions. Progress and attempts belong to
-separate operational state. Local SQLite, Git references, and local artifacts will
-support history, integrity, and recovery.
+The Contract Kernel provides one publication API for all six Engines. A schema
+check validates wire shape. Publication then checks exact references, scoped
+obligations, provenance and revision lineage in a SQLite transaction. Published
+documents remain immutable as active pointers advance. Progress and attempts
+belong to separate operational state.
 
-`.nukytera/` is reserved and excluded from Git. Persistence, transactions,
-migrations, and recovery belong to later phases. Their coordination must account
-for SQLite and Git having separate transaction boundaries.
+Private state is stored at `.nukytera/state.db`. Evidence references use verified
+digests of local artifacts. SQLite, artifacts and Git have separate transaction
+boundaries. Engine-specific recovery and execution state belong to later phases.
+See [storage and recovery](storage.md) and the [design record](contract-kernel-design.md).
 
 ## Related documentation
 
