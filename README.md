@@ -6,7 +6,8 @@ verification. It aims to preserve engineering standards when working with
 different agents, initially Codex and Claude Code.
 
 The current implementation is the **Phase 0 foundation**, with package version
-`0.1.0`. Phase 0.1 prepares the repository for English-language public development.
+`0.1.0`. Phase 0.1 established English-language public development. Phase 0.2
+verifies clean Python virtual environments on Windows and Linux and applies MPL 2.0.
 The product target remains Core v0.1, based on product specification revision v0.2.
 
 ## Current capabilities
@@ -42,14 +43,16 @@ Repository artifacts and public collaboration use English.
 
 ## Prerequisites
 
-Use Python 3.12 or later with pip and venv, plus Git. Python 3.12 is the current
-verification and CI baseline. Run the following commands from the repository
-root. Environment activation is optional because each command names its interpreter.
+Use a normal Python 3.12 installation with pip and venv, plus Git. Run the following
+commands from the root of a fresh checkout. Environment activation is optional
+because each command names its interpreter.
 
 ### Windows PowerShell
 
 ```powershell
+py -3.12 --version
 py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -c "from pathlib import Path; import sys; print(sys.executable); assert sys.prefix != sys.base_prefix; assert Path(sys.prefix).resolve() == Path('.venv').resolve(); assert Path(sys.executable).absolute().is_relative_to(Path('.venv').resolve())"
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 .\.venv\Scripts\python.exe -m pip check
 .\.venv\Scripts\python.exe -m agentforge --help
@@ -59,23 +62,28 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m ruff format --check .
 ```
 
-If Python is supplied by a local Codex desktop runtime and the `py` launcher cannot
-find it, the following optional command can create the environment on installations
-with this runtime layout. A regular Python installation is the portable prerequisite.
+If the `py` launcher is unavailable, use a normal Python 3.12 executable to create
+the environment, after checking its version. For example, if that installation is
+available as `python`, the equivalent command is `python -m venv .venv`.
+
+Optional PowerShell activation can be checked separately.
 
 ```powershell
-$PythonExe = Join-Path $env:USERPROFILE '.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'
-& $PythonExe -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -c "from pathlib import Path; import sys; print(sys.executable); assert Path(sys.prefix).resolve() == Path('.venv').resolve()"
+deactivate
 ```
 
-Use that command in place of `py -3.12 -m venv .venv` in a clean checkout. A virtual
-environment created from an application runtime may need recreation after that
-runtime moves during an update.
+If the current PowerShell execution policy blocks activation, keep using the
+explicit `.venv` executable paths above. Installation and verification do not
+require changing the machine's execution policy.
 
 ### POSIX shell
 
 ```sh
+python3.12 --version
 python3.12 -m venv .venv
+.venv/bin/python -c "from pathlib import Path; import sys; print(sys.executable); assert sys.prefix != sys.base_prefix; assert Path(sys.prefix).resolve() == Path('.venv').resolve(); assert Path(sys.executable).absolute().is_relative_to(Path('.venv').resolve())"
 .venv/bin/python -m pip install -e '.[dev]'
 .venv/bin/python -m pip check
 .venv/bin/python -m agentforge --help
@@ -85,9 +93,23 @@ python3.12 -m venv .venv
 .venv/bin/python -m ruff format --check .
 ```
 
+Optional activation in Bash.
+
+```bash
+source .venv/bin/activate
+python -c "from pathlib import Path; import sys; print(sys.executable); assert Path(sys.prefix).resolve() == Path('.venv').resolve()"
+deactivate
+```
+
+In POSIX `sh`, use `. .venv/bin/activate` instead of `source`. If a distribution
+packages venv or ensurepip separately, install its Python 3.12 venv support before
+creating the environment. Keep installation inside `.venv`.
+
 Local validation results and their environment are recorded in
 [engineering decisions](docs/decisions.md). The workflow targets Python 3.12 on
-Linux and Windows. Remote CI and POSIX execution require their own observed results.
+Linux and Windows. Clean-venv verification must identify the exact commit and
+environment used. Prior CI results from the runner's global Python do not establish
+the clean-venv result.
 
 ## Standard validation
 
@@ -152,4 +174,11 @@ requirements, binding technology and structural decisions, and human acceptance.
 
 ## License
 
-License selection is pending. A license has not yet been granted for this repository.
+AgentForge is licensed under the [Mozilla Public License 2.0](LICENSE), with SPDX
+identifier `MPL-2.0`. Its file-level copyleft requires distributed covered source
+files, including modifications, to remain under MPL 2.0. Commercial use and
+distribution are permitted subject to the license conditions, including applicable
+source-availability and notice requirements. Separate files in a larger work may
+use other licenses. See the complete license and
+[Mozilla's FAQ](https://www.mozilla.org/en-US/MPL/2.0/FAQ/) for the governing terms
+and guidance.

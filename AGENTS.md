@@ -4,6 +4,8 @@ This repository contains the AgentForge Core foundation, package version `0.1.0`
 The product target is Core v0.1, based on product specification revision v0.2.
 Phase 0 established the foundation. Phase 0.1 covers the English-language migration,
 publication review, verification, and first public GitHub publication when authorized.
+Phase 0.2 verifies clean virtual environments on Windows and Linux and implements
+the project owner's approved MPL-2.0 license on a reviewed branch.
 
 ## Five mandatory Engineering Commandments
 
@@ -39,8 +41,10 @@ requirements. Private planning references must stay outside published artifacts.
 
 Use English for all repository artifacts, source comments and docstrings,
 documentation, user-facing messages, test descriptions and output labels, commit
-messages, and public GitHub collaboration. User conversations and internal planning
-may follow the user's preferred language.
+messages, and public GitHub collaboration. This rule applies to every current and
+future implementation phase, subphase, checkpoint, engineering report, and related
+implementation communication. Private product planning may remain in the project
+owner's preferred language.
 
 Inspect files, applicable instructions, and Git status before editing. Preserve
 existing work and operate only in the authorized directory. Follow the
@@ -88,4 +92,11 @@ require authorization for the specific action. Before a public commit or push,
 inspect the complete staged snapshot, secret/private-data scan results, author
 identity, target ownership, repository visibility, and licensing status. Preserve
 existing history and use normal pushes. License selection belongs to the project
-owner and remains pending until explicitly decided.
+owner, who has selected the Mozilla Public License 2.0 (`MPL-2.0`).
+
+Preserve the complete, unmodified [LICENSE](LICENSE), appropriate source notices or
+SPDX headers, and accurate packaging metadata. Respect existing copyright and
+third-party notices, and never invent copyright-holder names or ownership
+transfers. Record license-related decisions and keep licensing guidance consistent
+with the official license. Phase 0.2 changes belong on a reviewed feature branch
+or pull request. Changing the default branch requires separate authorization.

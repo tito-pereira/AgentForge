@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """Safe loading and structural validation of the Phase 0 Standard."""
 
 import json

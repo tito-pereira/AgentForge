@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 name: Foundation checks
 
 on: [push, pull_request]
@@ -8,26 +9,85 @@ permissions:
 jobs:
   verify:
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            shell: bash
+            base: python3.12
+            python: ./.venv/bin/python
+            cli: ./.venv/bin/agentforge
+          - os: windows-latest
+            shell: pwsh
+            base: python
+            python: ./.venv/Scripts/python.exe
+            cli: ./.venv/Scripts/agentforge.exe
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - name: Install package and tools
-        run: python -m pip install ".[dev]"
-      - name: Verify installation and CLI
+      - name: Record tested commit
+        run: git rev-parse HEAD
+      - name: Create clean virtual environment
+        run: ${{ matrix.base }} -m venv .venv
+      - name: Verify virtual environment and Python version
         run: |
-          python -m pip check
-          python -m agentforge --help
-          agentforge --version
-      - name: Lint and formatting
+          ${{ matrix.python }} -c "
+          import platform
+          import sys
+          from pathlib import Path
+          expected = Path.cwd() / '.venv'
+          assert sys.version_info[:2] == (3, 12)
+          assert sys.prefix != sys.base_prefix
+          assert Path(sys.prefix).resolve() == expected.resolve()
+          assert Path(sys.executable).absolute().is_relative_to(expected.absolute())
+          print(platform.platform())
+          print(sys.version)
+          print('Interpreter:', Path(sys.executable).relative_to(Path.cwd()))
+          "
+      - name: Record virtual environment pip version
+        run: ${{ matrix.python }} -m pip --version
+      - name: Install package and development tools
+        run: ${{ matrix.python }} -m pip install -e ".[dev]"
+      - name: Check dependency consistency
+        run: ${{ matrix.python }} -m pip check
+      - name: Verify CLI help
+        run: ${{ matrix.python }} -m agentforge --help
+      - name: Verify console entry point
+        run: ${{ matrix.cli }} --version
+      - name: Run all tests
+        run: ${{ matrix.python }} -m pytest
+      - name: Check lint
+        run: ${{ matrix.python }} -m ruff check .
+      - name: Check formatting
+        run: ${{ matrix.python }} -m ruff format --check .
+      - name: Verify Bash activation
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
-          python -m ruff check .
-          python -m ruff format --check .
-      - name: Tests
-        run: python -m pytest
+          source .venv/bin/activate
+          python -c "import sys; from pathlib import Path; assert sys.prefix != sys.base_prefix; assert Path(sys.prefix).resolve() == (Path.cwd() / '.venv').resolve(); print(sys.executable)"
+          deactivate
+      - name: Verify POSIX sh activation
+        if: runner.os == 'Linux'
+        shell: sh
+        run: |
+          . .venv/bin/activate
+          python -c "import sys; from pathlib import Path; assert sys.prefix != sys.base_prefix; assert Path(sys.prefix).resolve() == (Path.cwd() / '.venv').resolve(); print(sys.executable)"
+          deactivate
+      - name: Verify PowerShell activation
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          . ./.venv/Scripts/Activate.ps1
+          python -c "import sys; from pathlib import Path; assert sys.prefix != sys.base_prefix; assert Path(sys.prefix).resolve() == (Path.cwd() / '.venv').resolve(); print(sys.executable)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          deactivate

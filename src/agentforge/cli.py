@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """Minimal Phase 0 command-line interface."""
 
 import argparse

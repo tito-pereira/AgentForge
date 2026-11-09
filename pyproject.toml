@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 [build-system]
 requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
@@ -7,6 +8,8 @@ name = "agentforge-core"
 dynamic = ["version"]
 description = "Local AgentForge Core foundation, guided by contracts and evidence."
 readme = "README.md"
+license = "MPL-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = ["PyYAML>=6,<7", "jsonschema>=4.23,<5"]
 

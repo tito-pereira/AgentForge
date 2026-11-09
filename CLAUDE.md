@@ -20,11 +20,15 @@ the authorized scope and report real evidence and limitations.
 
 Use English for all repository artifacts, source comments and docstrings,
 documentation, user-facing messages, test descriptions and output labels, commit
-messages, and public GitHub collaboration. User conversations and internal planning
-may follow the user's preferred language.
+messages, and public GitHub collaboration. This rule applies to every current and
+future implementation phase, subphase, checkpoint, engineering report, and related
+implementation communication. Private product planning may remain in the project
+owner's preferred language.
 
 Phase 0 established the foundation. Phase 0.1 prepares its English-language public
-repository. The conventions, installation and verification commands, and delivery
+repository. Phase 0.2 verifies clean Windows/Linux virtual environments and applies
+the approved MPL-2.0 license on a reviewed branch. The conventions, installation
+and verification commands, and delivery
 rules are in [AGENTS.md](AGENTS.md). Public engineering context is available through
 the [README](README.md) and local documentation. Keep private planning references
 outside published artifacts.
@@ -38,3 +42,10 @@ Starting Phase 1 requires a subsequent instruction from the project owner. Exter
 actions require authorization for their specific scope, including public commits,
 pushes, and repository creation. Follow the staged-content, identity, ownership,
 visibility, and licensing checks in [AGENTS.md](AGENTS.md).
+
+The project owner selected Mozilla Public License 2.0 (`MPL-2.0`). Preserve the
+complete [LICENSE](LICENSE), source notices/SPDX headers, packaging metadata, and
+accurate copyright and third-party notices. Never invent copyright-holder names
+or ownership transfers. Record license-related decisions. Phase 0.2 changes belong
+on a reviewed feature branch or pull request. Default-branch changes require
+separate authorization.

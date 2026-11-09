@@ -1,7 +1,8 @@
+# SPDX-License-Identifier: MPL-2.0
 import subprocess
 import sys
 import sysconfig
-from importlib.metadata import version
+from importlib.metadata import distribution
 from pathlib import Path
 
 import pytest
@@ -47,4 +48,9 @@ def test_installed_entry_point_and_metadata(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == f"agentforge {__version__}"
-    assert version("agentforge-core") == __version__
+    installed = distribution("agentforge-core")
+    assert installed.version == __version__
+    assert installed.metadata["License-Expression"] == "MPL-2.0"
+    assert installed.metadata.get_all("License-File") == ["LICENSE"]
+    license_text = (Path(__file__).resolve().parents[1] / "LICENSE").read_text(encoding="utf-8")
+    assert installed.read_text("licenses/LICENSE") == license_text
