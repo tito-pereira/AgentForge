@@ -5,16 +5,14 @@ instructions, explicit human decisions, versioned contracts, and independent
 verification. It aims to preserve engineering standards when working with
 different agents, initially Codex and Claude Code.
 
-The current implementation is the **Phase 0 foundation**, with package version
-`0.1.0`. Phase 0.1 established English-language public development. Phase 0.2
-verifies clean Python virtual environments on Windows and Linux and applies MPL 2.0.
-Phase 0.3 migrates the product identity to Nukytera while preserving functionality.
+The implementation includes the **Phase 0 foundation** and the **Phase 1 Contract
+Kernel**, with package version `0.1.0`. Phase 0 established English-language public
+development, clean Windows and Linux environments, MPL 2.0 and the Nukytera identity.
 The product target remains Core v0.1, based on product specification revision v0.2.
 
 The brand is **Nukytera**, the Python distribution is `nukytera-core`, and the
-import package and CLI command are `nukytera`. Version `0.1.0` is retained for
-this naming migration. Use the new namespace for current commands. Earlier names
-and execution evidence are preserved as history in [decisions](docs/decisions.md).
+import package and CLI command are `nukytera`. Earlier names and execution evidence
+are preserved as history in [decisions](docs/decisions.md).
 
 ## Current capabilities
 
@@ -22,14 +20,14 @@ and execution evidence are preserved as history in [decisions](docs/decisions.md
 - A declarative YAML Standard containing five mandatory Engineering Commandments.
 - JSON Schema validation that rejects missing or disabled Commandments and invalid
   policy structure, using safe YAML loading.
+- Eight packaged contract schemas, exact references, publication authority checks,
+  immutable revisions, and transactional local SQLite storage.
 - Positive and negative tests, Ruff checks, and a GitHub Actions workflow.
 - Agent instructions and self-contained engineering documentation.
 
-The six Engines and eight contract schemas are planned. Operational SQLite
-persistence, agent execution adapters, project negotiation, workflow execution,
-independent validation runners, reports, and experimental builds are future work.
-The CLI currently displays help and version information. The future Nukytera
-Bench will evaluate human direction of programming agents after the Core is ready.
+The six Engines will use the same kernel. Project negotiation, execution adapters,
+workflow scheduling, independent validation runners, report generation and
+experimental builds belong to subsequent phases. The CLI displays help and version.
 
 ## Five Engineering Commandments
 
@@ -135,19 +133,39 @@ policy and schema paths. These files belong to the checkout and must accompany
 their use. Tests exercise valid policy loading, missing and disabled Commandments,
 invalid flags and structures, malformed YAML, and unsafe YAML constructors.
 
+## Contract Kernel example
+
+After installation, run `examples/contract_kernel.py` with the venv Python.
+
+```powershell
+.\.venv\Scripts\python.exe examples/contract_kernel.py
+```
+
+```sh
+.venv/bin/python examples/contract_kernel.py
+```
+
+The example loads eight JSON documents, publishes them in dependency order into a
+temporary store, reopens it, resolves a historical revision and rejects a bad
+publication. Its synthetic approval receipts and interrupted validation result
+exercise the API without certifying a product. See the
+[contract API](docs/contracts.md) and [storage guide](docs/storage.md).
+
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
-| `src/nukytera/` | Package version, minimal CLI, and structural Standard loader. |
+| `src/nukytera/` | Package version, minimal CLI, Standard loader and Contract Kernel. |
+| `src/nukytera/contracts/schemas/` | Eight executable schemas and shared definitions, installed with the package. |
+| `examples/` | Eight sample contracts and the executable kernel demonstration. |
 | `policies/` | Versioned Standard policy. |
 | `schemas/` | Structural schema for the initial Standard. |
-| `tests/` | CLI, package metadata, and positive/negative policy checks. |
+| `tests/` | CLI, package, policy, contract integrity, authority and persistence checks. |
 | `AGENTS.md`, `CLAUDE.md` | Equivalent agent obligations and human authority. |
 | `docs/` | Architecture, contract catalog, workflows, roadmap, and decisions. |
 | `.github/workflows/ci.yml` | Installation, CLI, lint, formatting, and test workflow. |
 
-`.nukytera/` is reserved for future private project state. `.gitignore` protects
+`.nukytera/` holds private project state. `.gitignore` protects
 local environments, private state, databases, caches, and common secret files.
 Review staged content before committing.
 
@@ -164,14 +182,14 @@ Review staged content before committing.
 | 6 — Evolution + Hardening | Product evolution, isolated builds, feedback, recovery, and robustness. |
 
 These are construction phases. Each requires bounded tasks, tests, documentation,
-and review. Phase 1 and feature development remain suspended pending a subsequent
-instruction from the project owner. The naming migration uses a reviewed pull
-request and requires separate authorization to merge into the default branch.
+and review. Phase 1 uses a reviewed pull request. The project owner authorizes
+integration and the start of Phase 2 separately.
 
 ## Engineering documentation
 
 - [Architecture and six Engines](docs/architecture.md)
 - [Eight contract types](docs/contracts.md)
+- [SQLite storage and recovery](docs/storage.md)
 - [Workflows, gates, and authority](docs/workflows.md)
 - [Implementation plan and acceptance criteria](docs/implementation-plan.md)
 - [Decisions, verification history, and limits](docs/decisions.md)

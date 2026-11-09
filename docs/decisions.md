@@ -236,6 +236,38 @@ URLs, folder moves, and fresh Windows/Linux results must be recorded only after
 they are observed. This decision records the naming contract rather than claiming
 completion of those operations.
 
+## Phase 1.0 Contract Kernel decisions
+
+The explicit Phase 1.0 order starts from verified main `830943bb`. It preserves
+the historical baseline tag, package version `0.1.0`, PRD revision v0.2 and Core
+v0.1 target. The [design record](contract-kernel-design.md) separates approved
+responsibilities from the wire, identity and storage choices made here.
+
+- Use the existing JSON Schema stack and its offline reference registry. The
+  wheel includes eight schemas and a shared envelope, with no added dependency.
+- Keep the four exact reference fields in JSON and a frozen `ContractRef` in
+  Python. Store sequential content versions and exact predecessors rather than
+  implicit latest references. Select active revisions with SQLite pointers.
+- Verify approval through the authenticated caller's exact-document receipt
+  verifier. Human decisions retain their original authority. Already approved
+  exact sources support new plans without repeating their approvals. Changes to
+  binding interface definitions or milestones require applicable human proof.
+- Use SQLite foreign keys and immediate transactions for publication and CAS.
+  SHA-256 detects changes to published documents and local evidence bytes.
+  The store retains the prior document even after active resolution changes.
+- The first migration initializes an empty local database. Explicit SQLite
+  backup and fail-closed version checks preserve existing files. Future schema
+  upgrades will need their own migration and recovery evidence.
+- The demonstration uses fixtures in an isolated temporary root. A blocked
+  interrupted result exercises gate derivation without claiming executed tests.
+  Existing CLI help and version remain the supported commands.
+
+The source-to-test matrix records the Engineering Completion Gate. Independent
+reviews examine authority, schema coverage, transactions, evidence binding, public
+documentation and the final test results. The PR records the exact tested SHA
+and observed Windows and Ubuntu evidence. Phase 2 negotiation and the six full
+Engines remain future work.
+
 ## Technical references
 
 These references were consulted for packaging, validation, lint, and CI during

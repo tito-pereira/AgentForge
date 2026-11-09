@@ -56,8 +56,9 @@ scopes defined by the verification plan.
 Concurrent revisions must reconcile their base revision before activation.
 Recovery requires inspecting the working tree, artifacts, tests, and external
 effects that may already have occurred. Interrupted work retains its incomplete
-result and available evidence. Shared persistence and these mechanisms will be
-implemented starting with the Contract Kernel.
+result and available evidence. The [Contract Kernel](contracts.md) persists
+immutable revisions, active pointers, exact edges and ordered publication events.
+Workflow execution and recovery decisions belong to the future Engines.
 
 ## Playtests, delivery, and evolution
 
