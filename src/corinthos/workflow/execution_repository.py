@@ -621,10 +621,17 @@ class ExecutionRepository:
             )
             return self._attempt_view(connection, attempt)
 
-    def transition(self, attempt_id, fence, target_state, *, owner_id, details):
+    def transition(
+        self, attempt_id, fence, target_state, *, owner_id, details, completion_guard=None
+    ):
+        """Apply a trusted completion guard while holding the database writer reservation."""
         _json(details)
         if not details or target_state not in {"VERIFYING", "COMPLETED", "BLOCKED", "INTERRUPTED"}:
             raise StoreError("Record an explicit observed execution outcome.")
+        if completion_guard is not None and (
+            target_state != "COMPLETED" or not callable(completion_guard)
+        ):
+            raise StoreError("A completion guard applies only to the completion transition.")
         with self.store._transaction() as connection:
             attempt = self._attempt(connection, attempt_id)
             if (
@@ -644,6 +651,12 @@ class ExecutionRepository:
             }
             if target_state not in allowed.get(attempt["state"], set()):
                 raise ConflictError("This attempt transition is not permitted.")
+            if completion_guard is not None:
+                checked = completion_guard()
+                _json(checked)
+                details = {**details, **checked}
+                merged = {**merged, **checked}
+                self._owned(connection, attempt, fence, owner_id, live=True)
             connection.execute(
                 "UPDATE wf_checkpoints SET state = ? WHERE execution_id = ? AND checkpoint_id = ?",
                 (target_state, execution["execution_id"], attempt["checkpoint_id"]),

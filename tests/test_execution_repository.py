@@ -2,6 +2,7 @@
 """Synthetic published contracts exercise durable claims without launching agents."""
 
 import json
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
@@ -373,6 +374,78 @@ def test_failed_recovery_rolls_back_recovering_state_fence_attempt_and_history(s
     assert repository.history(execution["execution_id"]) == history
     with repository.store._connection() as connection:
         assert connection.execute("SELECT COUNT(*) FROM wf_attempts").fetchone()[0] == 1
+
+
+def test_completion_guard_holds_writer_reservation_and_records_current_observations(setup):
+    repository, execution, _, _ = setup
+    attempt = _claim(repository, execution)
+    attempt = repository.transition(
+        attempt["attempt_id"],
+        attempt["fence"],
+        "VERIFYING",
+        owner_id=attempt["owner_id"],
+        details={"cleanup_confirmed": True},
+    )
+
+    def guard():
+        with sqlite3.connect(
+            repository.store.database_path, timeout=0, autocommit=True
+        ) as competing:
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                competing.execute("BEGIN IMMEDIATE")
+        assert repository.get_attempt(attempt["attempt_id"])["state"] == "VERIFYING"
+        return {
+            "gates": [{"state": "SATISFIED", "observation": "Checked inside writer reservation"}]
+        }
+
+    completed = repository.transition(
+        attempt["attempt_id"],
+        attempt["fence"],
+        "COMPLETED",
+        owner_id=attempt["owner_id"],
+        details={"cleanup_confirmed": True},
+        completion_guard=guard,
+    )
+    assert completed["state"] == "COMPLETED"
+    assert completed["details"]["gates"][0]["observation"] == "Checked inside writer reservation"
+    assert (
+        repository.history(execution["execution_id"])[-1]["data"]["gates"]
+        == completed["details"]["gates"]
+    )
+
+
+@pytest.mark.parametrize("failure", ["rejected", "expired"])
+def test_rejected_or_expired_completion_guard_preserves_verifying_attempt_and_claim(setup, failure):
+    repository, execution, _, clock = setup
+    attempt = _claim(repository, execution)
+    attempt = repository.transition(
+        attempt["attempt_id"],
+        attempt["fence"],
+        "VERIFYING",
+        owner_id=attempt["owner_id"],
+        details={"cleanup_confirmed": True},
+    )
+    before = repository.get(execution["execution_id"])
+    history = repository.history(execution["execution_id"])
+
+    def reject():
+        if failure == "expired":
+            clock[0] += 121
+            return {}
+        raise ConflictError("Current gate evidence is blocked")
+
+    with pytest.raises(ConflictError, match="expired" if failure == "expired" else "gate evidence"):
+        repository.transition(
+            attempt["attempt_id"],
+            attempt["fence"],
+            "COMPLETED",
+            owner_id=attempt["owner_id"],
+            details={"cleanup_confirmed": True},
+            completion_guard=reject,
+        )
+    assert repository.get(execution["execution_id"]) == before
+    assert repository.get_attempt(attempt["attempt_id"]) == attempt
+    assert repository.history(execution["execution_id"]) == history
 
 
 def test_late_transaction_failure_rolls_back_claim_before_any_external_effects(setup, monkeypatch):

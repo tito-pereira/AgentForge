@@ -384,21 +384,24 @@ class ValidationGateConsumer:
                 or plan["payload"]["gate_policy"]["gate"] != required.gate
             ):
                 raise IntegrityError("The Validation plan has a different target, gate or scope.")
+            candidates = [
+                document
+                for document in self._history("VALIDATION_RESULT", required.target_ref.project_id)
+                if document["payload"]["validation_plan_ref"]
+                == required.validation_plan_ref.to_json()
+                and document["payload"]["target_and_execution"]["artifact_identity"]
+                == artifact_identity
+            ]
+            latest = candidates[-1] if candidates else None
             result = (
-                self.store.get(required.result_ref) if required.result_ref is not None else None
+                self.store.get(required.result_ref) if required.result_ref is not None else latest
             )
-            if required.result_ref is None:
-                candidates = [
-                    document
-                    for document in self._history(
-                        "VALIDATION_RESULT", required.target_ref.project_id
-                    )
-                    if document["payload"]["validation_plan_ref"]
-                    == required.validation_plan_ref.to_json()
-                    and document["payload"]["target_and_execution"]["artifact_identity"]
-                    == artifact_identity
-                ]
-                result = candidates[-1] if candidates else None
+            if (
+                required.result_ref is not None
+                and latest is not None
+                and ContractRef.from_document(latest) != required.result_ref
+            ):
+                raise IntegrityError("A newer result exists for this exact plan and artifact.")
             if result is None:
                 observation["reason"] = (
                     "A real result for this exact current artifact is unavailable."

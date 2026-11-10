@@ -602,14 +602,18 @@ class WorkflowRunner:
             return self._negative(
                 attempt, "BLOCKED", {**details, "reason": "TECHNICAL_REVIEW_REJECTED"}
             )
-        required = {
-            gate.validation_plan_ref: gate
-            for gate in self.gates.applicable(reference, checkpoint["checkpoint_id"])
-        }
-        required.update({gate.validation_plan_ref: gate for gate in spec.required_gates})
-        observations = [
-            self.gates.consume(gate, final["artifact_identity"]) for gate in required.values()
-        ]
+
+        def observe_gates():
+            required = {
+                gate.validation_plan_ref: gate
+                for gate in self.gates.applicable(reference, checkpoint["checkpoint_id"])
+            }
+            required.update({gate.validation_plan_ref: gate for gate in spec.required_gates})
+            return [
+                self.gates.consume(gate, final["artifact_identity"]) for gate in required.values()
+            ]
+
+        observations = observe_gates()
         details["gates"] = observations
         if any(gate["state"] != "SATISFIED" for gate in observations):
             return self._negative(
@@ -628,13 +632,40 @@ class WorkflowRunner:
         details.update(
             reason="PRELIMINARY_CHECKPOINT_OBLIGATIONS_SATISFIED", source_evidence=evidence
         )
-        return self.repository.transition(
-            attempt["attempt_id"],
-            attempt["fence"],
-            "COMPLETED",
-            owner_id=self.owner_id,
-            details=details,
-        )
+        failure = {}
+
+        def completion_guard():
+            current_gates = observe_gates()
+            details["gates"] = current_gates
+            if any(gate["state"] != "SATISFIED" for gate in current_gates):
+                failure.update(state="BLOCKED", reason="REQUIRED_VALIDATION_GATE_NOT_SATISFIED")
+                raise ConflictError("Required Validation evidence changed before completion.")
+            if (
+                heartbeat.cancel.is_set()
+                or workspace_snapshot(self.root) != final
+                or not self.reconciler.inspect(reference)["current"]
+            ):
+                failure.update(
+                    state="INTERRUPTED", reason="SOURCE_OR_PLAN_CHANGED_BEFORE_COMPLETION"
+                )
+                raise ConflictError("The source or approved plan changed before completion.")
+            return {"gates": current_gates}
+
+        try:
+            return self.repository.transition(
+                attempt["attempt_id"],
+                attempt["fence"],
+                "COMPLETED",
+                owner_id=self.owner_id,
+                details=details,
+                completion_guard=completion_guard,
+            )
+        except ConflictError:
+            if not failure:
+                raise
+            return self._negative(
+                attempt, failure["state"], {**details, "reason": failure["reason"]}
+            )
 
     def verify_existing(self, attempt_id, *, cancel=None):
         attempt = self.repository.get_attempt(attempt_id)

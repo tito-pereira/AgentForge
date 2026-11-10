@@ -427,6 +427,148 @@ def test_gate_consumer_rechecks_real_kernel_result_artifact_and_evidence(tmp_pat
     assert consumer.consume(gate, identity)["state"] == "BLOCKED"
 
 
+@pytest.mark.parametrize("same_artifact", [False, True])
+def test_explicit_result_cannot_ignore_a_newer_run_for_same_exact_plan_and_artifact(
+    tmp_path, same_artifact
+):
+    from test_contract_semantics import _completed_result
+
+    store = ContractStore(tmp_path)
+    examples = {
+        name: _example(name)
+        for name in (
+            "project",
+            "technology-decision",
+            "module",
+            "workflow",
+            "validation",
+            "validation-result",
+        )
+    }
+    for name in ("project", "technology-decision", "module", "workflow", "validation"):
+        _publish(store, examples[name])
+    passed = _completed_result(examples, tmp_path / ".corinthos" / "artifacts")
+    reference = _publish(store, passed)
+    identity = passed["payload"]["target_and_execution"]["artifact_identity"]
+    gate = RequiredGate(
+        ContractRef.from_document(examples["validation"]),
+        reference,
+        "PRODUCT_VALIDATION",
+        ("demo-project",),
+        ContractRef.from_document(examples["project"]),
+    )
+    consumer = ValidationGateConsumer(store)
+    assert consumer.consume(gate, identity)["state"] == "SATISFIED"
+    interrupted = _example("validation-result")
+    interrupted["metadata"].update(contract_id="newer-result", revision_id="newer-result-r1")
+    interrupted["payload"]["target_and_execution"].update(
+        validation_run_id="newer-interrupted-run",
+        artifact_identity=deepcopy(identity)
+        if same_artifact
+        else {"snapshot_id": "unrelated-artifact"},
+    )
+    _publish(store, interrupted)
+    assert consumer.consume(gate, identity)["state"] == (
+        "BLOCKED" if same_artifact else "SATISFIED"
+    )
+
+
+@pytest.mark.parametrize("change", ["new_plan", "revised_plan", "new_result"])
+def test_gate_publication_before_completion_reservation_cannot_complete_stale_evidence(
+    tmp_path, change, monkeypatch
+):
+    from test_contract_semantics import _completed_result
+
+    store, reference = _seed(tmp_path)
+    plan = _example("validation")
+    project_ref = ContractRef.from_json(store.get(reference)["payload"]["project_contract_ref"])
+
+    def reviewer(request):
+        if change != "new_plan":
+            _publish(store, plan)
+            passed = _completed_result(
+                {"validation": plan, "validation-result": _example("validation-result")},
+                tmp_path / ".corinthos" / "artifacts",
+            )
+            passed["payload"]["target_and_execution"]["artifact_identity"] = request[
+                "artifact_identity"
+            ]
+            for evidence in passed["payload"]["evidence_refs"]:
+                evidence["artifact_identity"] = request["artifact_identity"]
+            _publish(store, passed)
+        return _accept(request)
+
+    runner = WorkflowRunner(
+        tmp_path, SyntheticAdapter(store, effect=_write_code), reviewer=reviewer
+    )
+    gates = (
+        ()
+        if change == "new_plan"
+        else (
+            RequiredGate(
+                ContractRef.from_document(plan),
+                None,
+                "PRODUCT_VALIDATION",
+                ("demo-project",),
+                project_ref,
+            ),
+        )
+    )
+    execution = runner.configure(reference, [_spec(gates=gates)], actor_id="synthetic-operator")
+    original = runner.repository.transition
+    injected = []
+
+    def publish_before_reservation(attempt_id, fence, state, **options):
+        if state == "COMPLETED":
+            if change == "new_plan":
+                plan["payload"]["validation_scope"].update(
+                    level="CHECKPOINT",
+                    target_ids=["greet"],
+                    target_contract_ref=reference.to_json(),
+                )
+                plan["payload"]["gate_policy"]["gate"] = "CHECKPOINT"
+                plan["payload"]["verification_matrix"] = [
+                    item
+                    for item in plan["payload"]["verification_matrix"]
+                    if item["source_ref"].get("obligation_id") != "SC1"
+                ]
+                publication = plan
+            elif change == "revised_plan":
+                assert options["details"]["gates"][0]["state"] == "SATISFIED"
+                publication = deepcopy(plan)
+                publication["metadata"].update(
+                    revision_id="revised-plan-r2",
+                    version=2,
+                    supersedes=ContractRef.from_document(plan).to_json(),
+                )
+                publication["payload"]["verification_matrix"][0]["criterion"] = (
+                    "A newly required exact inspection criterion."
+                )
+            else:
+                assert options["details"]["gates"][0]["state"] == "SATISFIED"
+                publication = _example("validation-result")
+                publication["metadata"].update(
+                    contract_id="later-result", revision_id="later-result-r1"
+                )
+                publication["payload"]["target_and_execution"].update(
+                    validation_run_id="later-interrupted-run",
+                    artifact_identity=options["details"]["artifact_identity"],
+                )
+            injected.append(_publish(store, publication))
+        return original(attempt_id, fence, state, **options)
+
+    monkeypatch.setattr(runner.repository, "transition", publish_before_reservation)
+    result = runner.run_next(execution["execution_id"])
+    assert len(injected) == 1
+    assert result["state"] == "BLOCKED"
+    assert result["details"]["reason"] == "REQUIRED_VALIDATION_GATE_NOT_SATISFIED"
+    assert result["details"]["gates"][0]["state"] in {"BLOCKED", "NOT_VERIFIED"}
+    assert not any(
+        event["kind"] == "ATTEMPT_COMPLETED"
+        for event in runner.repository.history(execution["execution_id"])
+    )
+
+
 def test_applicable_published_checkpoint_gate_cannot_be_omitted_from_config(tmp_path):
     store, reference = _seed(tmp_path)
     plan = _example("validation")
