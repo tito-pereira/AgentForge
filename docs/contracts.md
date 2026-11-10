@@ -173,14 +173,19 @@ DELEGATED provenance. Changed binding content requires renewed human review.
 Published unchanged sources are reused by exact reference. The Kernel remains
 the only publication authority, and historical documents retain their identities
 and bytes. A partial multi-document publication preserves already committed
-facts and requires renewed review for unfinished work. Runtime scheduling,
-execution and general revision-impact propagation require later checkpoints.
+facts and requires renewed review for unfinished work. The
+[execution service](workflow-execution.md) consumes those exact references and
+records actual attempts and checks separately. Conservative reconciliation
+preserves old evidence through explicit lineage. Evidenced structural conflicts
+can publish bounded PRRs for Project Manager negotiation. General product
+evolution and independent Validation/Report retain their later-phase boundaries.
 
 ## Related documentation
 
 - [Architecture and Engine responsibilities](architecture.md)
 - [Project Manager negotiation and approval](project-manager.md)
 - [Workflow planning and exact set authorization](workflow-planning.md)
+- [Execution, recovery and bounded revision requests](workflow-execution.md)
 - [Workflow boundaries and review rules](workflows.md)
 - [SQLite storage and recovery](storage.md)
 - [Design and acceptance traceability](contract-kernel-design.md)

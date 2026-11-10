@@ -1,9 +1,17 @@
-# Phase 3 checkpoints A through D
+# Phase 3 design and execution continuation
 
-The authorized delivery ends after planning and publication. Its starting point
-is main `139d1542f9b15938985909ab1124832cd69de607`, whose post-merge Windows and
+The initial A–D delivery ended after planning and publication. Its starting point
+was main `139d1542f9b15938985909ab1124832cd69de607`, whose post-merge Windows and
 Ubuntu jobs passed 245 tests each. A clean independent Python 3.12 installed
 wheel baseline also passed all 245 cases before source changes.
+
+The owner subsequently authorized checkpoints E–J, preserving the A–D baseline.
+The continuation adds dependency-aware execution, durable attempts and recovery,
+revision impact/reconciliation, bounded PRR handoff, the fixed local task-manager
+pilot, full verification and a human-reviewable PR. The pilot must be installed
+for personal Windows use with durable daily data outside source, tests, worktrees,
+venvs and Corinthos private state. Its exact contract approvals remain real
+foreground-terminal decisions.
 
 ## Boundaries and interfaces
 
@@ -13,14 +21,18 @@ wheel baseline also passed all 245 cases before source changes.
 | Workflow planner | Negotiate technologies, module obligations/interfaces, verification, checkpoint dependencies and optional milestones from an exact active Project revision. |
 | Workflow repository | Persist planning snapshots and append-only accepted turns using shared SQLite and optimistic versions. |
 | Planning authorization | Freeze an explicit set of complete candidate documents and bind real terminal consent to each exact publication. |
+| Workflow runner | Claim one eligible checkpoint, invoke a real adapter, run actual checks and bind preliminary technical review to the observed artifact. |
+| Execution repository | Retain v4 execution snapshots, attempts, fenced workspace leases and explicit inspected recovery or successor execution lineage. |
+| Revision reconciler | Detect active-source drift, map conservative impact and route bounded structural diagnoses or direct owner changes to Project Manager. |
 | Contract Kernel | Validate schemas, authority, exact references, coverage, immutable revisions and actual dependency-ordered publication. |
 
 Adapter invocation is an explicit process boundary. It is neither a scheduler
 nor evidence of checkpoint completion. Native settings and authentication remain
 under the local user's control. A worktree provides source isolation, while
 effective process restrictions depend on the agent's actual native capabilities.
-One harmless read-only diagnostic may verify the real Codex integration. It does
-not approve or implement a separate user project.
+The historical A–D Codex diagnostic was read-only. Actual pilot tasks use the
+runner after real concrete Project/plan approvals and retain their own attempt
+and artifact evidence.
 
 `AdapterManager` accepts explicit policy/schema paths validated by the existing
 Standard loader. `discover`, explicit managed-section `prepare`, `invoke` and
@@ -60,18 +72,18 @@ changes require the applicable fresh human review.
 
 ## Persistence and publication recovery
 
-The minimal A–D migration advances SQLite v2 to v3 in the existing state database.
-It adds a separate Workflow planning namespace and exact authorization/mandate
+The historical A–D migration advanced SQLite v2 to v3 in the existing state database.
+It added a separate Workflow planning namespace and exact authorization/mandate
 records. Existing PM state and immutable contract data retain their meanings.
 The generic compare-and-swap repository mechanics are reused. A verified private
-pre-upgrade backup precedes transactional schema changes. No execution scheduler,
-checkpoint-attempt lease or general process recovery is introduced in this scope.
+pre-upgrade backup precedes transactional schema changes. Scheduler leases and
+general execution recovery belong to the newly authorized E–F continuation.
 
 SQLite publication and external processes are distinct transaction domains.
 Planning publication recovery checks exact already-committed documents before
 retrying. It preserves legitimate partial publication and revokes uncertain or
 expired consent. Process invocation has a bounded lifecycle and no automatic
-retry. Full execution-state recovery belongs after checkpoint D.
+retry. Full execution-state recovery is now part of the E–F continuation.
 
 ## Requirement and evidence matrix
 
@@ -86,15 +98,14 @@ retry. Full execution-state recovery belongs after checkpoint D.
 | RF06 bounded internal replan | C–D | Exact predecessors, mandate scope and stale/mutated/replayed authority rejection. |
 | RF10 persistent planning | C–D | CAS, reopen, pre-upgrade backup, PM preservation and partial-publication recovery tests. |
 
-Checkpoints E–J require subsequent authorization. Their scheduler, execution
-recovery, impact/PRR production, real pilot, complete release CI and PR handoff
-remain outside this A–D delivery. RF07–RF09 runtime evolution, validation/report
-and product acceptance remain later responsibilities.
+The initial A–D delivery reserved checkpoints E–J for a subsequent order. That
+continuation is now authorized. RF07–RF09 runtime evolution, independent
+Validation/Report and formal product acceptance retain their later-phase bounds.
 
 ## A–D handoff
 
-The local `phase-3.0-workflow-adapters` branch is ready for the owner's review
-at the requested checkpoint D stop.
+The following records the historical local `phase-3.0-workflow-adapters` handoff
+at the owner's requested checkpoint D stop.
 
 | Checkpoint | Observed result |
 | --- | --- |
@@ -118,5 +129,53 @@ preparation requires a quiescent editor, and unconfirmed native-process cleanup
 revokes resume eligibility. See the [adapter guide](adapters.md) for observed
 capabilities and actual enforcement limits.
 
-This is the requested A–D stop. New Ubuntu/Windows release CI, public branch/PR
-handoff and the remaining execution checkpoints await the owner's next order.
+That handoff completed the requested A–D stop. The later owner instruction
+authorizes the remaining execution, release CI and PR work. New results must be
+recorded against their actual commit, environment and execution evidence.
+
+## E–J service boundaries
+
+`WorkflowRunner` owns dependency-aware dispatch, actual preliminary checks,
+required gate consumption and honest checkpoint state. `ExecutionRepository`
+owns durable attempts, workspace leases, versioned snapshots and recovery
+decisions. Claim transactions recheck exact active Workflow, Project, Module and
+Technology bindings. External processes, Git and SQLite have separate effects
+that recovery must inspect before an explicit retry.
+
+`RevisionReconciler.inspect` detects active-source drift before dispatch and
+at safe continuation points. `compare` reports conservative affected and
+preserved checkpoint sets. The execution repository creates an explicit successor
+execution and carries eligible completed work by its original attempt reference.
+Historical evidence retains its original contracts and artifact identity.
+
+The E–F migration advances the local schema to v4 for execution snapshots,
+checkpoint states, attempt observations and fenced workspace ownership. It
+preserves v3 planning/mandates, PM state and immutable contract bytes. The
+wire schema remains `1.0`. Backup and migration evidence belongs to the actual
+storage checks, separate from any pilot build result.
+
+Only an explicit evidenced `STRUCTURAL_CONFLICT` diagnosis produces a bounded
+Kernel PRR. Exact published contract sources may use empty validation evidence
+IDs with truthful limitations. Genuine nonempty evidence IDs require a real
+published Validation Result. User-initiated global changes use the existing
+Project Manager revision flow directly. Requests and failures supply no approval
+to change product obligations.
+
+The selected pilot brief defines task rules, SQLite persistence and a terminal
+interface with dependent checkpoints. Its concrete contracts currently await
+real owner-terminal approvals. Pilot implementation and installation are pending.
+Actual Codex pilot execution, installed-application verification and delivery
+evidence must be recorded after they occur. The earlier live Codex evidence
+remains a read-only adapter diagnostic.
+
+The planned installation checks use isolated demonstration data and cover
+backup/restore, reinstallation and working-directory independence. Daily data
+remains private. Later formal Validation/Report gates must be reported separately
+from a functional installed application and explicit preliminary technical
+review. Claude's executable is absent, so live Claude verification remains
+`NOT VERIFIED`.
+
+The [Phase 3 verification record](phase-3-verification.md) identifies the current
+installed-wheel environment, artifact digest, native diagnostic and remaining
+pilot requirements. It preserves the distinction from the historical A–D
+evidence above.

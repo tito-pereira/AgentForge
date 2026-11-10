@@ -64,6 +64,19 @@ jobs:
         run: ${{ matrix.python }} -m pip install --no-index --no-deps --force-reinstall --find-links .venv/wheelhouse corinthos-core
       - name: Check dependency consistency
         run: ${{ matrix.python }} -m pip check
+      - name: Verify installed wheel imports
+        run: |
+          ${{ matrix.python }} -c "
+          import sys
+          from pathlib import Path
+          import corinthos
+          import corinthos.adapters
+          import corinthos.workflow
+          for module in (corinthos, corinthos.adapters, corinthos.workflow):
+              origin = Path(module.__file__).resolve()
+              assert origin.is_relative_to(Path(sys.prefix).resolve()), origin
+              print(module.__name__, origin)
+          "
       - name: Verify CLI help
         run: ${{ matrix.python }} -m corinthos --help
       - name: Verify console entry point
@@ -72,6 +85,13 @@ jobs:
         run: |
           ${{ matrix.python }} -m corinthos project --help
           ${{ matrix.python }} -m corinthos project start --help
+      - name: Verify Workflow commands
+        run: |
+          ${{ matrix.python }} -m corinthos workflow --help
+          ${{ matrix.python }} -m corinthos workflow plan --help
+          ${{ matrix.python }} -m corinthos workflow execute --help
+          ${{ matrix.python }} -m corinthos workflow recover --help
+          ${{ matrix.python }} -m corinthos workflow reconcile --help
       - name: Run all tests
         run: ${{ matrix.python }} -m pytest
       - name: Run the contract kernel demonstration

@@ -7,11 +7,12 @@ explicit local approval through the existing Contract Kernel. Package version
 separate artifacts.
 
 The terminal works with human-entered descriptions. Optional assistance is an
-injected advisory boundary for a future Adapter Manager. Natural-language
+injected advisory boundary used by Adapter Manager. Natural-language
 consistency, criterion testability and technical feasibility require human review.
 The Project Manager records these limits as `NOT_VERIFIED` and displays actual
-assumptions, risks and supplied evidence. Workflow execution, agent integrations,
-independent Validation and Report remain subsequent implementation phases.
+assumptions, risks and supplied evidence. The [Workflow runtime](workflow-execution.md)
+and [agent adapters](adapters.md) consume approved specifications. Independent
+Validation and Report remain subsequent implementation phases.
 
 ## A first project
 

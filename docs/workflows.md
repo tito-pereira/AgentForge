@@ -1,11 +1,12 @@
 # Workflows, gates, and review
 
 Baseline dated November 8, 2026, aligned with product requirements revision v0.2.
-The following runtime flows describe approved behavior for subsequent execution
-work. Phase 3.0 A–D provides the [planning service](workflow-planning.md), exact
-TDC/Module/Workflow publication and [Adapter Manager](adapters.md) boundaries.
-Scheduler/execution, full recovery, impact propagation and the live pilot require
-later authorization. Explicit technical review evaluates implementation evidence.
+The following flows describe approved planning and execution boundaries. Phase
+3.0 A–D established the [planning service](workflow-planning.md), exact
+TDC/Module/Workflow publication and [Adapter Manager](adapters.md). The authorized
+E–J continuation adds [sequential execution](workflow-execution.md), actual
+engineering checks, durable recovery and conservative reconciliation. Formal
+independent Validation, Report and product acceptance retain their own scopes.
 
 ## Implemented planning boundary
 
@@ -20,6 +21,22 @@ state. They remain distinct from the runtime checkpoint lifecycle below. A saved
 checkpoint or milestone specifies future obligations. It supplies no execution,
 Validation, playtest availability or product acceptance evidence.
 
+## Execution and recovery evidence
+
+Runtime configuration binds each exact checkpoint to real files, argument-list
+commands, permitted source paths and applicable genuine published gates. One
+owned attempt runs at a time. Fenced leases and source checks reject stale
+dispatch or completion. Actual command results, file inventories and explicit
+preliminary technical review determine the operational result. An agent's
+success statement carries no completion authority.
+
+Interrupted effects require process/working-tree/artifact inspection before
+explicit retry readiness, verification-only or blocking. Revision reconciliation
+creates a successor execution, preserving eligible completed work through the
+old attempt reference. It retains the old contract/artifact identity. The
+[runtime guide](workflow-execution.md) records actual state transitions, CLI,
+public APIs and partial-effect limitations.
+
 ## Execution and authority
 
 User ↔ Project Manager negotiate intent and acceptance criteria. Human approval
@@ -30,8 +47,9 @@ interfaces, and milestone design require traceable human authorization.
 The conceptual checkpoint lifecycle is `PENDING` → `READY` → `RUNNING` →
 `VERIFYING` → `COMPLETED`, with `BLOCKED`, `INTERRUPTED`, and `RECOVERING` for
 exceptions and resumption. Dependencies form a directed acyclic graph. Parallel
-execution requires resources, isolation, and freedom from conflicts. Future
-implementation will specify the complete transitions and their conditions.
+execution requires resources, isolation, and freedom from conflicts. Current
+execution is sequential. The [runtime guide](workflow-execution.md#state-leases-and-recovery)
+records implemented transitions and atomic recovery decisions.
 
 Workflow completes checkpoints when their criteria, deliverables, tests,
 documentation, and applicable gates are satisfied. A completed checkpoint,

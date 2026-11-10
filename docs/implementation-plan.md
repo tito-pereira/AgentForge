@@ -121,11 +121,11 @@ Execution results and remaining limitations are recorded in the PR and
 [decision log](decisions.md). Local checks and observed remote CI retain their
 own environments and exact tested commit identities.
 
-## Phase 3.0 authorized A–D scope
+## Historical Phase 3.0 A–D scope
 
 This increment begins from integrated Phase 2 commit
 `139d1542f9b15938985909ab1124832cd69de607`. Its verified installed-wheel baseline
-passed the existing 245 tests before changes. Current authorization covers only
+passed the existing 245 tests before changes. The initial authorization covered
 construction checkpoints A–D, followed by an explicit stop.
 
 | Checkpoint | Required evidence |
@@ -142,8 +142,28 @@ separates protocol tests from live-provider evidence. The current tests and
 documentation support the authorized A–D deliverables, without treating them as
 completion of the later release checkpoints.
 
-Scheduler execution, general process recovery, impact propagation, the live
-project pilot, full release CI and PR checkpoints E–J require a subsequent order.
+That historical stop preserved planning/publication evidence. The owner has
+subsequently authorized the remaining E–J continuation.
+
+## Phase 3.0 E–J continuation
+
+| Checkpoint | Required evidence |
+| --- | --- |
+| 3.0.E | Sequential dependency-aware dispatch, actual automated/file checks, explicit preliminary review and admissible required gates. |
+| 3.0.F | Versioned execution state, fenced workspace leases, retained attempts and inspected recovery across process/Git/SQLite effects. |
+| 3.0.G | Active-source detection, conservative impact, explicit old-evidence inheritance and bounded PRR/Project Manager handoff. |
+| 3.0.H | The fixed local task-manager pilot built by real Codex execution, reviewed, installed for personal Windows use and verified with isolated data. |
+| 3.0.I | Full regression, safety, documentation and clean installed-wheel Windows/Ubuntu checks at the actual final commit. |
+| 3.0.J | Independent review, factual release evidence and an owner-reviewable PR with no automatic merge. |
+
+The [runtime guide](workflow-execution.md) documents actual commands, recovery,
+revision handling and service interfaces. The [Phase 3 design](phase-3-design.md)
+preserves the A–D handoff and defines continuation boundaries. Pilot delivery
+must identify real source/package/launcher/data paths, preserve daily tasks
+across reinstall, and verify backup/restore using separate test data. Actual
+execution and release evidence are recorded only when observed. The
+[Phase 3 verification record](phase-3-verification.md) identifies the current
+installed-wheel results, native diagnostic and outstanding pilot approvals.
 
 ## Gates and the next phase
 
@@ -153,10 +173,10 @@ technologies, meaningful testing, accurate documentation, and readable code.
 Until Validation is implemented, automated tests and explicit technical review
 evaluate the evidence.
 
-Phase 2 provides human-led Project negotiation and Phase 3.0 A–D adds engineering
-planning and Adapter Manager boundaries. The project owner authorizes remaining
-construction checkpoints separately. Scheduling, independent audits and report
-generation remain future Engine responsibilities.
+Phase 2 provides human-led Project negotiation and Phase 3 adds planning,
+Adapter Manager, sequential execution and bounded reconciliation. Independent
+Validation, Report and general product evolution remain later responsibilities.
+The owner separately authorizes integration and subsequent construction phases.
 
 Once Project Manager, Workflow, a minimal adapter, and operational persistence
 exist, run a small isolated pilot. Repeat it once Validation and Report are
@@ -167,7 +187,8 @@ operational. The Bench follows construction of the Core.
 - [Architecture](architecture.md)
 - [Contract catalogue](contracts.md)
 - [Project Manager guide and traceability](project-manager.md)
-- [Workflow planning and A–D scope](workflow-planning.md)
+- [Workflow planning and exact authority](workflow-planning.md)
+- [Execution, recovery and revision reconciliation](workflow-execution.md)
 - [Workflow scopes and approval rules](workflows.md)
 - [Practical decisions and historical verification](decisions.md)
 - [Contributor instructions](../AGENTS.md)

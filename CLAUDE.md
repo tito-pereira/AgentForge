@@ -51,7 +51,7 @@ and persisted claims carry no production authority. Preserve review digests,
 receipt invalidation, exact bases, unaffected obligations and crash recovery.
 Keep structural checks and supplied feasibility evidence distinct from independent
 product validation. Render every review field and escape untrusted terminal
-controls. Phase 3.0 A–D adds [Workflow planning](docs/workflow-planning.md) and
+controls. Phase 3.0 adds [Workflow planning](docs/workflow-planning.md) and
 [Adapter Manager](docs/adapters.md) boundaries. Preserve exact provider-owned
 interfaces, mandatory verification coverage and per-document authority. A bounded
 mandate requires actual recorded approval, valid scope, actor and freshness.
@@ -63,11 +63,12 @@ evidence hashes, event order, and SQLite application and schema markers.
 Inspect Git status, preserve existing work, protect secrets and private state, and
 respect the authorized directory. Mark results **NOT VERIFIED** when execution or
 evidence is missing. Local tests and explicit technical review provide the initial
-verification. Operational agent integration belongs to later phases.
+verification. Operational execution must retain exact approved contract lineage.
 
-The authorized Phase 3.0 scope stops after A–D. Scheduling/execution, general
-recovery, impact propagation, a live project pilot and release/PR checkpoints E–J
-require a subsequent instruction from the project owner. External
+The owner's continuation authorizes all remaining Phase 3.0 checkpoints E–J:
+scheduling/execution, durable recovery, impact reconciliation, the selected live
+project pilot, CI and a human-reviewable PR. Genuine pilot contract and plan
+approval still require the foreground terminal bridge. External
 actions require authorization for their specific scope, including public commits,
 pushes, and repository creation. Follow the staged-content, identity, ownership,
 visibility, and licensing checks in [AGENTS.md](AGENTS.md).
@@ -75,7 +76,7 @@ visibility, and licensing checks in [AGENTS.md](AGENTS.md).
 The project owner selected Mozilla Public License 2.0 (`MPL-2.0`). Preserve the
 complete [LICENSE](LICENSE), source notices/SPDX headers, packaging metadata, and
 accurate copyright and third-party notices. Never invent copyright-holder names
-or ownership transfers. Record license-related decisions. Keep A–D changes
+or ownership transfers. Record license-related decisions. Keep Phase 3 changes
 reviewable on their dedicated branch. Merging into the default branch
 requires separate authorization. Preserve the historical `phase-1-baseline` tag
 and existing commit history.

@@ -3,8 +3,9 @@
 The Adapter Manager shares a validated versioned Standard and bounded context
 with separate Codex and Claude Code command adapters. It discovers installed
 capabilities, prepares explicit managed instructions, starts an external process
-and returns observed events and results. Checkpoint scheduling and durable
-execution recovery require later authorization beyond construction checkpoint B.
+and returns observed events and results. The separately authorized
+[execution runtime](workflow-execution.md) owns checkpoint scheduling, engineering
+verification and durable recovery through construction checkpoints E-J.
 
 ## Policy and context
 
@@ -78,10 +79,20 @@ to preserve authentication and settings. Environment values and raw stderr are
 excluded from normalized events and diagnostics.
 
 Timeouts use a monotonic clock. Output has line, total-byte and event-count
-limits. Cancellation uses an isolated process group on POSIX and native
-process-tree termination on Windows. The result records whether cleanup was
-confirmed. A restricted host may deny process-tree cleanup, which requires
-operator inspection before another attempt. The adapter performs no retries.
+limits. Discovery also bounds captured output and execution time. All native
+calls own their process lifecycle, including ordinary descendants left after a
+successful parent exit. Windows starts the process suspended, assigns it to a
+kill-on-close Job Object, then resumes its sole initial thread through documented
+Windows APIs. POSIX uses an isolated process group. Finalization terminates
+remaining owned processes and confirms that the Job or group is empty before
+reporting confirmed cleanup. An assignment failure prevents user code from
+starting. A restricted host or uncertain cleanup requires operator inspection
+before another attempt. The adapter performs no retries.
+
+This ownership boundary covers ordinary descendants. It is not a general OS
+sandbox and cannot contain effects deliberately routed through external services
+or an independently running broker. Authentication, native hooks and configured
+services remain the caller's responsibility.
 
 ## Results and native resume
 
@@ -102,8 +113,8 @@ The manager binds it in memory to the provider, workspace, Standard and approved
 task context, with confirmed prior cleanup. Only the attempt ID and prior facts
 may differ. The binding prevents blind cross-context reuse and simultaneous
 resume through the same manager. Process restart loses this binding. Durable
-execution recovery belongs to the subsequent checkpoint F and requires renewed
-authorization before implementation.
+execution recovery belongs to checkpoint F and uses an explicit inspected
+recovery decision; it does not invent a native resume binding after restart.
 
 Token and cost fields remain null when unavailable. Codex turn usage is observed
 from its completion event. Claude's reported conversation cost is a client-side
@@ -140,13 +151,18 @@ workspace remained unchanged.
 - Observed turn usage was 22,484 input tokens, including 13,696 cached input
   tokens, 428 output tokens and 395 reasoning output tokens. Cost was unavailable.
 
-This run exercised the restricted diagnostic boundary. The real product pilot
-belongs to checkpoint H and requires subsequent authorization. Live Claude
+This run exercised the restricted diagnostic boundary. The separately authorized
+real product pilot belongs to checkpoint H. Live Claude
 verification remains `NOT VERIFIED` because discovery did not find its native
 executable in this environment. The adapter's 30 synthetic protocol cases passed
-on Windows, including timeout and process-tree cancellation under the normal
+on Windows, including timeout and cancellation under the normal
 account. A restricted account denied tree cleanup during an earlier check, and
 the result exposed `cleanup_confirmed=False` for that environment.
+
+The subsequent lifecycle regression tests exercise actual synthetic parent and
+child processes. They verify that successful adapter, checker and discovery
+parents cannot leave ordinary children writing after confirmed cleanup, and that
+failed Windows assignment or an interrupt kills the still-suspended process.
 
 ## Official interfaces consulted
 

@@ -71,7 +71,7 @@ and independent product validation. Escape untrusted controls in terminal review
 and retain all fields and stable IDs. Revisions require current exact bases,
 explicit human approval and preservation of unaffected obligations. Verify
 restart, stale sessions, receipt invalidation and failed publication recovery.
-Phase 3.0 is authorized through construction checkpoints A–D. Use the
+Phase 3.0 is authorized through construction checkpoints A–J. Use the
 [Workflow planning guide](docs/workflow-planning.md) for the separate planning
 service, exact final-set review and publication. Preserve provider-owned
 interfaces, exact consumer revisions, blocking obligation coverage and M1–M5.
@@ -82,9 +82,10 @@ ID is a reference to authority that must be checked, never consent by itself.
 Keep Adapter Manager provider capabilities and live evidence honest. Follow the
 [adapter guide](docs/adapters.md) and preserve equivalent mandatory Standard
 instructions. An agent result carries no human approval or independent Validation
-authority. Stop after A–D. Scheduler/execution work, general execution recovery,
-impact propagation, the pilot and release/PR checkpoints E–J require subsequent
-authorization. Validation and Report remain later phases.
+authority. The owner's continuation authorizes scheduler/execution, durable recovery,
+impact reconciliation, the selected real pilot and release/PR checkpoints E–J.
+Pilot contract and technical-plan approval still require the actual foreground
+terminal bridge. Validation and Report remain later phases.
 
 Treat `urn:nukytera:contracts:1.0:*`, `nukytera-standard` and SQLite application
 ID `0x4E554B59` as durable identifiers. Keep the original document bytes,
@@ -138,7 +139,7 @@ Preserve the complete, unmodified [LICENSE](LICENSE), appropriate source notices
 SPDX headers, and accurate packaging metadata. Respect existing copyright and
 third-party notices, and never invent copyright-holder names or ownership
 transfers. Record license-related decisions and keep licensing guidance consistent
-with the official license. Keep A–D changes reviewable on their dedicated branch.
-The current authorization stops before the later PR and release checkpoints.
+with the official license. Keep Phase 3 changes reviewable on their dedicated branch.
+The current authorization includes normal push, CI and a human-reviewable PR.
 Merging into the default branch requires separate authorization.
 Preserve the historical `phase-1-baseline` tag and all existing commit history.

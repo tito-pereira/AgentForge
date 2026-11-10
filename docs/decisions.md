@@ -341,9 +341,9 @@ independent Validation, Report and product evolution require later phases.
 The [Project Manager guide](project-manager.md) provides the API, tutorial,
 state transitions and requirement-to-test traceability.
 
-## Phase 3 checkpoints A–D
+## Historical Phase 3 checkpoints A–D
 
-The owner authorized only checkpoints A through D from integrated Phase 2 main
+The initial owner instruction authorized only checkpoints A through D from integrated Phase 2 main
 `139d1542f9b15938985909ab1124832cd69de607`. Both prior post-merge platforms and
 the new clean installed-wheel baseline passed 245 cases before implementation.
 The dedicated local branch is `phase-3.0-workflow-adapters`.
@@ -366,14 +366,17 @@ The dedicated local branch is `phase-3.0-workflow-adapters`.
   terminal. Each actual publication has its own exact HUMAN receipt. A separate
   explicit choice may grant the tightly scoped 24-hour internal dependency
   mandate. It never authorizes a changed technology, interface or milestone.
-- SQLite v3 extends the shared local database only for planning history and
+- SQLite v3 extended the shared local database only for planning history and
   publication authority. It reuses existing CAS mechanics and verifies a real
   Phase 2 store upgrade with all contract and PM data preserved. Partial
   publication remains inspectable and safe to reconcile.
 
-This scope prepares and publishes plans. Scheduler execution, full recovery,
-revision impact/PRR production, a real user-project pilot, release CI/PR and
-checkpoints E–J await subsequent owner authorization. The
+That initial scope prepared and published plans. Scheduler execution, full
+recovery, revision impact/PRR production, the user-project pilot and release
+checkpoints E–J awaited a subsequent order. The owner later authorized that
+continuation. The [runtime guide](workflow-execution.md) describes its current
+boundaries, and the [verification record](phase-3-verification.md) identifies
+observed results. The
 [design and traceability record](phase-3-design.md) and
 [planning guide](workflow-planning.md) define the A–D boundary.
 

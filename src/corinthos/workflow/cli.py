@@ -50,6 +50,9 @@ def configure_parser(commands) -> None:
                 "--mandate", help="Existing bounded human mandate ID for a permitted replan."
             )
         action.set_defaults(handler=run)
+    from .runtime_cli import configure_parser as configure_runtime_parser
+
+    configure_runtime_parser(actions)
 
 
 def _identifier(prefix: str) -> str:

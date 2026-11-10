@@ -1,10 +1,11 @@
 # Workflow planning
 
-Construction Phase 3.0 A–D adds Adapter Manager boundaries and human-authorized
-engineering planning to the existing Project Manager and Contract Kernel. This
-delivery stops after planning. Scheduling, checkpoint execution, full execution
-recovery, impact propagation, a live project pilot and the later release
-checkpoints require a subsequent execution instruction.
+Construction Phase 3.0 A–D added Adapter Manager boundaries and human-authorized
+engineering planning to the existing Project Manager and Contract Kernel. The
+owner subsequently authorized E–J. The [execution guide](workflow-execution.md)
+covers actual checkpoint attempts, inspected recovery, conservative revision
+reconciliation and bounded structural requests. This guide focuses on the
+planning and exact-authorization boundary.
 
 `WorkflowPlanner` starts from an exact active approved Project Contract. Its thin
 terminal editor collects module responsibilities, technology evaluations,
@@ -93,8 +94,9 @@ and may appear before or after the action.
 | `workflow history [SESSION_ID]` | Inspect durable accepted operations and snapshots. |
 | `workflow revise CONTRACT_ID [--revision REVISION_ID]` | Start from an exact active Workflow revision and record the reason for a revised plan. |
 
-The planning CLI exposes saved draft status and publication lineage. Runtime
-checkpoint states, dispatch and completion belong to the later execution work.
+The planning commands expose saved draft status and publication lineage. The
+separate [runtime commands](workflow-execution.md#commands-and-native-provider-setup)
+expose checkpoint attempts, actual verification, completion and recovery.
 
 ## Exact review and authority
 
@@ -154,7 +156,8 @@ earlier immutable documents committed. Publication reconciliation preserves thos
 facts, revokes uncertain remaining consent and requires a fresh review for the
 remaining set. A concurrent read between consent and publication can trigger the
 same safe revocation. This bounded publication reconciliation supports planning;
-general scheduler/process/Git recovery belongs to the later execution checkpoint.
+the [runtime recovery guide](workflow-execution.md#state-leases-and-recovery)
+covers inspection of scheduler/process/Git effects before an explicit retry.
 Follow the [storage guide](storage.md) for migrations, backup and error recovery.
 
 | Planning state | Meaning |
@@ -199,7 +202,7 @@ verification, checkpoints and milestones. The
 questions. The [authorization bridge](../src/corinthos/workflow/authorization.py)
 supplies exact proof to the existing Kernel.
 
-## A–D traceability and stop point
+## A–D traceability and continuation
 
 | Checkpoint | Boundary and evidence |
 | --- | --- |
@@ -212,5 +215,7 @@ RF01/RF02 cover Standard translation, adapters and assistance. RF03 covers
 technology and engineering planning. RF10 covers private persistent state and
 integrity. RF04 execution, RF05 independent validation and RF06 automatic impact
 propagation are later integration boundaries. RF07–RF09 remain later product
-features. This delivery stops at A–D, before scheduler/runtime work, the live
-project pilot and release/PR checkpoints E–J.
+features. The initial delivery stopped at A–D. The authorized E–J continuation
+adds execution, recovery, reconciliation, the selected installed task-manager
+pilot and reviewable release evidence. Historical A–D results remain preserved
+in the [Phase 3 design](phase-3-design.md).
