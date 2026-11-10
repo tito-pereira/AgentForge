@@ -13,8 +13,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--version", action="version", version=f"corinthos {__version__}")
     from corinthos.project_manager.cli import configure_parser
+    from corinthos.workflow.cli import configure_parser as configure_workflow_parser
 
-    configure_parser(parser)
+    configure_workflow_parser(configure_parser(parser))
     arguments = parser.parse_args(argv)
     if hasattr(arguments, "handler"):
         return arguments.handler(arguments)
