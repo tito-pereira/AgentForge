@@ -80,9 +80,62 @@ def test_missing_formal_plan_blocks_and_retained_request_rejects_drift(tmp_path,
     assert request["artifact_identity"] == attempt["details"]["artifact_identity"]
     assert main(["workflow", "--root", str(tmp_path), "audit-request", attempt["attempt_id"]]) == 0
     assert json.loads(capsys.readouterr().out) == request
+    plan = _publish_plan(store, workflow, "CHECKPOINT", workflow, ("greet",))
+    assert (
+        main(
+            [
+                "validation",
+                "--root",
+                str(tmp_path),
+                "run",
+                plan.contract_id,
+                "--workflow-attempt",
+                attempt["attempt_id"],
+                "--evaluator",
+                "synthetic-cli-evaluator",
+            ]
+        )
+        == 1
+    )
+    assert json.loads(capsys.readouterr().out)["gate"]["state"] == "BLOCKED"
     (tmp_path / "greeting.py").write_text("Changed candidate", encoding="utf-8")
     with pytest.raises(ConflictError, match="exact retained candidate"):
         runner.audit_request(attempt["attempt_id"])
+
+
+def test_rejected_preliminary_review_retains_an_independent_formal_block(tmp_path):
+    store, workflow = _seed(tmp_path)
+    (tmp_path / "greeting.py").write_bytes(b"answer = 42\n")
+    plan = _publish_plan(store, workflow, "CHECKPOINT", workflow, ("greet",))
+    result = ValidationRunner(store).run(
+        plan,
+        tmp_path,
+        evaluator="synthetic-independent-evaluator",
+        reviewer=lambda request: {
+            "evaluator": request["evaluator"],
+            "artifact_identity": request["artifact_identity"],
+            "inspected": request["paths"],
+            "status": "NONCONFORMANT",
+            "rationale": "Synthetic evaluator found an unmet check in the reviewed candidate.",
+        },
+    )
+    runner = WorkflowRunner(
+        tmp_path,
+        SyntheticAdapter(store, effect=lambda *_: None),
+        reviewer=lambda request: replace(_accept(request), accepted=False),
+        auditor=lambda _: pytest.fail("A rejected review must not trigger a new formal audit."),
+    )
+    spec = replace(
+        _spec(), audit_expectations=(AuditExpectation("CHECKPOINT", workflow, ("greet",)),)
+    )
+    execution = runner.configure(workflow, [spec], actor_id="synthetic-operator")
+    attempt = runner.run_next(execution["execution_id"])
+    assert attempt["state"] == "BLOCKED"
+    assert attempt["details"]["reason"] == "TECHNICAL_REVIEW_REJECTED"
+    assert attempt["details"]["technical_review"]["accepted"] is False
+    (observation,) = attempt["details"]["gates"]
+    assert observation["state"] == "BLOCKED"
+    assert observation["result_ref"] == result.to_json()
 
 
 @pytest.mark.parametrize("with_guard", [False, True])

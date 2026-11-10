@@ -8,8 +8,9 @@ immutable Validation Result Contract (VRC) from actual observations and
 admissible evidence.
 
 The [design and traceability record](phase-4-design.md) describes requirements,
-authority and failure boundaries. The [Contract Kernel guide](contracts.md)
-explains publication and immutable references.
+authority and failure boundaries. The [engineering verification](phase-4-verification.md)
+records observed regression and real-pilot evidence. The
+[Contract Kernel guide](contracts.md) explains publication and immutable references.
 
 ## Choose the audit scope
 

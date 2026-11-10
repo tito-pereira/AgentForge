@@ -666,11 +666,7 @@ class WorkflowRunner:
             "findings": list(review.findings),
             "origin": "EXPLICIT_PRELIMINARY_ENGINEERING_REVIEW",
         }
-        if not review.accepted:
-            return self._negative(
-                attempt, "BLOCKED", {**details, "reason": "TECHNICAL_REVIEW_REJECTED"}
-            )
-        if self.auditor is not None and (gates or retained):
+        if review.accepted and self.auditor is not None and (gates or retained):
             self.auditor(self.audit_request(attempt["attempt_id"]))
 
         def observe_gates():
@@ -688,6 +684,10 @@ class WorkflowRunner:
 
         observations = observe_gates()
         details["gates"] = observations
+        if not review.accepted:
+            return self._negative(
+                attempt, "BLOCKED", {**details, "reason": "TECHNICAL_REVIEW_REJECTED"}
+            )
         if any(gate["state"] != "SATISFIED" for gate in observations):
             return self._negative(
                 attempt, "BLOCKED", {**details, "reason": "REQUIRED_VALIDATION_GATE_NOT_SATISFIED"}

@@ -17,7 +17,9 @@ from corinthos.contracts import (
     approval_request,
 )
 from corinthos.validation.planning import ValidationPlanner
-from corinthos.validation.procedures import digest
+from corinthos.validation.procedures import digest, file_hash
+from corinthos.validation.runtime import ValidationRunner
+from corinthos.workflow.verification import RequiredGate, ValidationGateConsumer
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -134,6 +136,68 @@ def test_derive_and_publish_exact_scopes(planner, level, target, targets, gate, 
     assert document["payload"]["gate_policy"] == {"gate": gate}
     assert service.repository.bindings(ref) == bindings
     assert service.repository.reviews(ref) == reviews
+
+
+@pytest.mark.parametrize(
+    ("level", "target", "targets", "gate"),
+    [
+        ("MODULE", "module", ["greeting"], "CHECKPOINT"),
+        ("INTEGRATION", "workflow", ["greeting"], "CHECKPOINT"),
+        ("PLAYTEST_MILESTONE", "workflow", ["later"], "PLAYTEST_READINESS"),
+    ],
+)
+def test_exact_scoped_gate_from_actual_isolated_candidate(
+    planner, tmp_path, level, target, targets, gate
+):
+    service, refs = planner
+    draft = service.derive(refs["project"], level, target_ref=refs[target], target_ids=targets)
+    bindings = _bindings(draft)
+    executable = str(Path(sys.executable).resolve(strict=True))
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "README.md").write_text("Approved isolated candidate", encoding="utf-8")
+    bindings[draft["obligations"][0]["check_id"]]["command"] = {
+        "argv": [
+            executable,
+            "-I",
+            "-B",
+            "-c",
+            "from pathlib import Path; import sys; "
+            "assert (Path(sys.argv[1])/'README.md').read_text()=='Approved isolated candidate'; "
+            "print('SCOPED_CANDIDATE_OBSERVED')",
+            "{candidate}",
+        ],
+        "timeout": 15,
+        "inputs": {executable: file_hash(executable)},
+        "success_line": "SCOPED_CANDIDATE_OBSERVED",
+        "failure_line": None,
+    }
+    plan = service.publish(draft, bindings, _assess(draft, bindings), actor_id="synthetic-plan")
+
+    def review(request):
+        assert request["scope"]["level"] == level
+        assert (
+            Path(request["candidate_root"]) / "README.md"
+        ).read_text() == "Approved isolated candidate"
+        return {
+            "evaluator": request["evaluator"],
+            "artifact_identity": request["artifact_identity"],
+            "inspected": request["paths"],
+            "status": "CONFORMANT",
+            "rationale": "Synthetic assessment of the exact isolated candidate for scope wiring.",
+        }
+
+    ref = ValidationRunner(service.store).run(
+        plan, candidate, evaluator="synthetic-auditor", reviewer=review
+    )
+    result = service.store.get(ref)["payload"]
+    assert result["gate_assessment"]["scope"] == level
+    assert result["gate_assessment"]["gate"] == gate
+    observed = ValidationGateConsumer(service.store).consume(
+        RequiredGate(plan, None, gate, tuple(targets), refs[target]),
+        result["target_and_execution"]["artifact_identity"],
+    )
+    assert observed["state"] == "SATISFIED"
 
 
 def test_omitting_global_obligation_and_unreviewed_binding_block_publication(planner):
