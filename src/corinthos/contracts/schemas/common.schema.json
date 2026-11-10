@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:nukytera:contracts:1.0:common",
-  "title": "Shared Nukytera contract definitions",
+  "title": "Shared Corinthos contract definitions",
   "$comment": "SPDX-License-Identifier: MPL-2.0",
   "$defs": {
     "text": {

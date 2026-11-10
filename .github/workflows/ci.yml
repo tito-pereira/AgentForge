@@ -20,16 +20,17 @@ jobs:
             shell: bash
             base: python3.12
             python: ./.venv/bin/python
-            cli: ./.venv/bin/nukytera
+            cli: ./.venv/bin/corinthos
           - os: windows-latest
             shell: pwsh
             base: python
             python: ./.venv/Scripts/python.exe
-            cli: ./.venv/Scripts/nukytera.exe
+            cli: ./.venv/Scripts/corinthos.exe
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@v7
         with:
@@ -60,15 +61,17 @@ jobs:
       - name: Build package wheel
         run: ${{ matrix.python }} -m pip wheel . --no-deps --wheel-dir .venv/wheelhouse
       - name: Install built wheel
-        run: ${{ matrix.python }} -m pip install --no-index --no-deps --force-reinstall --find-links .venv/wheelhouse nukytera-core
+        run: ${{ matrix.python }} -m pip install --no-index --no-deps --force-reinstall --find-links .venv/wheelhouse corinthos-core
       - name: Check dependency consistency
         run: ${{ matrix.python }} -m pip check
       - name: Verify CLI help
-        run: ${{ matrix.python }} -m nukytera --help
+        run: ${{ matrix.python }} -m corinthos --help
       - name: Verify console entry point
         run: ${{ matrix.cli }} --version
       - name: Run all tests
         run: ${{ matrix.python }} -m pytest
+      - name: Run the contract kernel demonstration
+        run: ${{ matrix.python }} examples/contract_kernel.py
       - name: Check lint
         run: ${{ matrix.python }} -m ruff check .
       - name: Check formatting

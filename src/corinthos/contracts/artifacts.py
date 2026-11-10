@@ -19,6 +19,12 @@ def is_link(info: os.stat_result) -> bool:
     )
 
 
+def _require_safe_directory(path: Path) -> None:
+    info = path.lstat()
+    if is_link(info) or not stat.S_ISDIR(info.st_mode):
+        raise StoreError("A private project directory is unsafe.")
+
+
 def private_directory(project_root: Path, name: str | None = None, *, create: bool = False) -> Path:
     """Return a private directory under an existing, caller-authorized project."""
     if name not in {None, "artifacts", "snapshots"}:
@@ -27,14 +33,25 @@ def private_directory(project_root: Path, name: str | None = None, *, create: bo
         root = Path(project_root).resolve(strict=True)
         if not root.is_dir():
             raise StoreError("The project root must be an existing directory.")
-        private = root / ".nukytera"
+        private = root / ".corinthos"
+        if create:
+            try:
+                (root / ".nukytera").lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                try:
+                    _require_safe_directory(private)
+                    (private / "state.db").lstat()
+                except FileNotFoundError:
+                    raise StoreError(
+                        "Legacy private state requires explicit migration before opening a Corinthos store."
+                    ) from None
         directories = [private] if name is None else [private, private / name]
         for path in directories:
             if create:
                 path.mkdir(mode=0o700, exist_ok=True)
-            info = path.lstat()
-            if is_link(info) or not stat.S_ISDIR(info.st_mode):
-                raise StoreError("A private project directory is unsafe.")
+            _require_safe_directory(path)
         return directories[-1]
     except (OSError, RuntimeError):
         raise StoreError("The private project directory is unavailable.") from None

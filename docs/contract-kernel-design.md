@@ -1,8 +1,8 @@
 # Contract Kernel design and traceability
 
-Phase 1.0 starts from the verified Phase 0.3 merge `830943bb`. Product target
+Phase 1.0 started from the verified Phase 0.3 merge `830943bb`. Product target
 Core v0.1, PRD revision v0.2, package version `0.1.0`, and the historical
-`phase-1-baseline` tag identify distinct things. The existing 35 tests pass.
+`phase-1-baseline` tag identify distinct things. The Phase 0.3 baseline passed 35 tests.
 
 The approved scope is shared infrastructure for six Engines and eight contract
 types (architecture §§2.1–2.33). The kernel validates documents, checks stored
@@ -58,9 +58,12 @@ and appends its event. Identical retries return the existing revision. Historica
 revisions remain available after activation changes. Hashes detect inconsistent
 stored content; the local OS account remains the file trust boundary.
 
-The database lives at `.nukytera/state.db`. Artifact verification is read-only
-and restricted to `.nukytera/artifacts/`. Keep state, backups and evidence out
+The current database lives at `.corinthos/state.db`. Artifact verification is
+read-only and restricted to `.corinthos/artifacts/`. Keep state, backups and evidence out
 of Git. SQLite, artifacts and Git have separate failure and recovery boundaries.
+Phase 1.1 preserves the original wire schema URNs, Standard reference and SQLite
+markers. The [storage guide](storage.md#migrating-existing-project-state) covers
+moving existing state while preserving its exact published contents.
 
 ## Acceptance traceability
 

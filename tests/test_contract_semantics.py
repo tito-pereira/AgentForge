@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from nukytera.contracts import ContractRef, IntegrityError, PublishContext, approval_request
-from nukytera.contracts.store import ContractStore
+from corinthos.contracts import ContractRef, IntegrityError, PublishContext, approval_request
+from corinthos.contracts.store import ContractStore
 
 _EXAMPLES = Path(__file__).resolve().parents[1] / "examples" / "contracts"
 _ORDER = (
@@ -379,7 +379,7 @@ def _relabelled_run(first):
 
 def test_validation_cannot_reuse_evidence_for_a_new_artifact(store, examples, tmp_path):
     _seed(store, examples, "validation-result")
-    first = _completed_result(examples, tmp_path / ".nukytera" / "artifacts")
+    first = _completed_result(examples, tmp_path / ".corinthos" / "artifacts")
     wrong_target = deepcopy(first)
     wrong_target["payload"]["target_and_execution"]["artifact_identity"]["commit"] = "b" * 40
     _reject(store, wrong_target, "different validation run, plan, or artifact")
@@ -395,7 +395,7 @@ def test_validation_cannot_reuse_evidence_for_a_new_artifact(store, examples, tm
 
 def test_published_evidence_path_cannot_be_rebound_to_a_new_digest(store, examples, tmp_path):
     _seed(store, examples, "validation-result")
-    directory = tmp_path / ".nukytera" / "artifacts"
+    directory = tmp_path / ".corinthos" / "artifacts"
     first = _completed_result(examples, directory)
     first_ref = _publish(store, first)
     replay = _relabelled_run(first)
@@ -412,7 +412,7 @@ def test_nonconformant_mandatory_check_blocks_gate_despite_complete_evidence(
     store, examples, tmp_path
 ):
     _seed(store, examples, "validation-result")
-    result = _completed_result(examples, tmp_path / ".nukytera" / "artifacts")
+    result = _completed_result(examples, tmp_path / ".corinthos" / "artifacts")
     check = result["payload"]["check_results"][0]
     check["status"] = "NONCONFORMANT"
     _reject(store, result, "Gate assessment contradicts")

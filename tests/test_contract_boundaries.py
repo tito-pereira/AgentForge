@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from nukytera.contracts import (
+from corinthos.contracts import (
     AuthorityError,
     ContractStore,
     IntegrityError,
@@ -17,8 +17,8 @@ from nukytera.contracts import (
     SchemaError,
     approval_request,
 )
-from nukytera.contracts.artifacts import verify_artifact
-from nukytera.contracts.model import canonical_json
+from corinthos.contracts.artifacts import verify_artifact
+from corinthos.contracts.model import canonical_json
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
@@ -60,7 +60,7 @@ def test_canonical_json_rejects_non_json_values(value):
 
 
 def test_artifact_digest_is_checked_against_the_file(tmp_path):
-    artifacts = tmp_path / ".nukytera" / "artifacts"
+    artifacts = tmp_path / ".corinthos" / "artifacts"
     artifacts.mkdir(parents=True)
     path = artifacts / "result.txt"
     path.write_bytes(b"observed output")
@@ -77,11 +77,11 @@ def test_artifact_digest_is_checked_against_the_file(tmp_path):
 def test_artifact_paths_reject_escapes_and_devices(tmp_path, name):
     with pytest.raises(IntegrityError, match="path or digest"):
         verify_artifact(tmp_path, name, "a" * 64)
-    assert not (tmp_path / ".nukytera").exists()
+    assert not (tmp_path / ".corinthos").exists()
 
 
 def test_artifact_cannot_be_a_hard_link(tmp_path):
-    artifacts = tmp_path / ".nukytera" / "artifacts"
+    artifacts = tmp_path / ".corinthos" / "artifacts"
     artifacts.mkdir(parents=True)
     outside = tmp_path / "private.txt"
     outside.write_bytes(b"private")

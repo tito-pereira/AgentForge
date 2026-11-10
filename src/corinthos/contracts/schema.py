@@ -40,7 +40,7 @@ def _schema_name(contract_type: ContractType) -> str:
 
 @cache
 def _validators() -> dict[ContractType, Draft202012Validator]:
-    directory = files("nukytera.contracts").joinpath("schemas")
+    directory = files("corinthos.contracts").joinpath("schemas")
     names = ["common", *map(_schema_name, ContractType)]
     schemas = {}
     try:

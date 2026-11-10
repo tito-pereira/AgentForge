@@ -22,7 +22,7 @@ verified Phase 0.3 merge `830943bb`.
 The Contract Kernel is shared infrastructure for the six Engines. Phase 0
 prepares the foundation. Phase 1 implements contract schemas and persistence.
 The Standard policy and its minimal schema belong to the foundation.
-`.nukytera/` contains private SQLite state and local evidence.
+`.corinthos/` contains private SQLite state and local evidence.
 
 ## Phase 0 checkpoints
 
@@ -55,7 +55,7 @@ test descriptions, commit messages, and public GitHub collaboration. Phase 0.1
 results must be established by its own validation and delivery report. Historical
 test counts and local checks remain tied to their original execution.
 
-## Phase 0.3 naming migration
+## Historical Phase 0.3 naming migration
 
 Migrate active branding, imports, distribution metadata, CLI commands, paths,
 documentation, and owned repository/workspace names to Nukytera. Keep package
@@ -82,6 +82,19 @@ and intentional legacy references.
 
 See the [design and traceability record](contract-kernel-design.md) for the mapping
 to approved architecture and PRD v0.2.
+
+## Phase 1.1 naming migration
+
+Use Corinthos for the product, repository and workspace, `corinthos-core` for
+the distribution, `corinthos` for the import and CLI, and `.corinthos/` for
+private state. Preserve the Phase 1.0 wire identifiers, SQLite markers and
+historical evidence. Verify the renamed wheel and all contract behavior in
+fresh Windows and Ubuntu venvs. Exercise migration and recovery with disposable
+legacy stores before moving private data.
+
+The [decision log](decisions.md#phase-11-corinthos-naming-and-compatibility)
+records the name mapping and deliberate exceptions. The project owner reviews
+and authorizes the migration merge separately from Phase 2.
 
 ## Gates and the next phase
 

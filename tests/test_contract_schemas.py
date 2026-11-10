@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from nukytera.contracts import ContractType, SchemaError, load_schema, validate_schema
+from corinthos.contracts import ContractType, SchemaError, load_schema, validate_schema
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples" / "contracts"
 

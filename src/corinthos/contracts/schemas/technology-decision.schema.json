@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:nukytera:contracts:1.0:technology-decision",
-  "title": "Nukytera Technology Decision Contract",
+  "title": "Corinthos Technology Decision Contract",
   "$comment": "SPDX-License-Identifier: MPL-2.0",
   "$ref": "urn:nukytera:contracts:1.0:common#/$defs/envelope",
   "properties": {

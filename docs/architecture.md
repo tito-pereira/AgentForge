@@ -4,8 +4,9 @@ Documentation baseline dated November 8, 2026. Product requirements revision v0.
 targets Core v0.1. Package version `0.1.0` includes the Phase 0 foundation and
 Phase 1 Contract Kernel.
 Phase 0.1 translates public materials into English and prepares public publication.
-The active product identity is Nukytera. Phase 0.3 changes naming while retaining
-the same requirements revision, product target, package version, and architecture.
+Phase 1.1 establishes the Corinthos runtime names and private state path.
+The same requirements revision, product target, package version and Contract
+Kernel architecture apply to Corinthos.
 
 ## Six approved Engines
 
@@ -29,8 +30,8 @@ Validation returns findings to Workflow, and Report references the source record
 
 ## Implemented foundation
 
-The Python package uses the `src/nukytera/` layout. Its CLI displays help and
-version information. `nukytera.standard.load_standard(policy_path, schema_path)`
+The Python package uses the `src/corinthos/` layout. Its CLI displays help and
+version information. `corinthos.standard.load_standard(policy_path, schema_path)`
 loads the YAML policy with `safe_load` and validates its structure against JSON
 Schema, using explicit paths. The policy declares `standard_version: "0.1"` and
 contains M1–M5 in `commandments`, each with `required: true` and `description`.
@@ -50,7 +51,7 @@ obligations, provenance and revision lineage in a SQLite transaction. Published
 documents remain immutable as active pointers advance. Progress and attempts
 belong to separate operational state.
 
-Private state is stored at `.nukytera/state.db`. Evidence references use verified
+Private state is stored at `.corinthos/state.db`. Evidence references use verified
 digests of local artifacts. SQLite, artifacts and Git have separate transaction
 boundaries. Engine-specific recovery and execution state belong to later phases.
 See [storage and recovery](storage.md) and the [design record](contract-kernel-design.md).

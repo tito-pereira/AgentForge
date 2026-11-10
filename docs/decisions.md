@@ -1,10 +1,9 @@
 # Foundation decisions
 
-The active product identity is Nukytera. This log preserves the identifiers used
-in the earlier Phase 0, 0.1, and 0.2 records, including the former AgentForge
-publication identity and commands. Those legacy strings describe history and
-must not be read as current setup instructions. The current naming contract is
-recorded in the Phase 0.3 section below.
+The active product identity is Corinthos. Earlier AgentForge and Nukytera names
+record historical decisions, commands and evidence. The Phase 1.1 section
+records the current naming contract and the durable identifiers retained for
+stored contracts.
 
 Record dated November 8, 2026, for scaffold `0.1.0`. The implementer made the
 following practical choices within the Phase 0 order. Their provenance is
@@ -201,7 +200,7 @@ English is mandatory for all implementation phases, subphases, checkpoints,
 engineering reports, repository artifacts, and related implementation
 communication. Phase 1 remains subject to a subsequent owner instruction.
 
-## Phase 0.3 naming decision and migration contract
+## Historical Phase 0.3 naming decision and migration contract
 
 On November 9, 2026, the project owner renamed the product to **Nukytera** and
 authorized the corresponding technical naming migration. This changes identity
@@ -221,11 +220,11 @@ contract types, human approval rules, and MPL-2.0 remain unchanged.
 
 The migration retains only the new active package and CLI, without a legacy
 alias or parallel source tree. Existing Standard identifiers, field names,
-schema versions, contract identities, and behavior are preserved. Feature work
-and Phase 1 remain suspended pending an explicit owner instruction.
+schema versions, contract identities, and behavior were preserved. Feature work
+and Phase 1 were suspended pending a later owner instruction.
 
 The legacy `.agentforge/` ignore rule is retained intentionally to protect any
-older private local state. `.nukytera/` is the active convention. This safety
+older private local state. `.nukytera/` was the active Phase 0.3 convention. This safety
 exclusion does not introduce runtime state migration or persistence features.
 Earlier commands and publication names above remain historical evidence.
 
@@ -236,9 +235,9 @@ URLs, folder moves, and fresh Windows/Linux results must be recorded only after
 they are observed. This decision records the naming contract rather than claiming
 completion of those operations.
 
-## Phase 1.0 Contract Kernel decisions
+## Historical Phase 1.0 Contract Kernel decisions
 
-The explicit Phase 1.0 order starts from verified main `830943bb`. It preserves
+The explicit Phase 1.0 order started from verified main `830943bb`. It preserved
 the historical baseline tag, package version `0.1.0`, PRD revision v0.2 and Core
 v0.1 target. The [design record](contract-kernel-design.md) separates approved
 responsibilities from the wire, identity and storage choices made here.
@@ -267,6 +266,41 @@ reviews examine authority, schema coverage, transactions, evidence binding, publ
 documentation and the final test results. The PR records the exact tested SHA
 and observed Windows and Ubuntu evidence. Phase 2 negotiation and the six full
 Engines remain future work.
+
+## Phase 1.1 Corinthos naming and compatibility
+
+On November 10, 2026, the project owner authorized the Corinthos naming
+migration from Phase 1.0 main
+[`e058f4b96454dba44e5b31387c37061b75cec662`](https://github.com/tito-pereira/Nukytera/commit/e058f4b96454dba44e5b31387c37061b75cec662).
+The [Phase 1.0 CI run](https://github.com/tito-pereira/Nukytera/actions/runs/42693412409)
+and the `phase-1-baseline` tag retain their historical identities.
+
+| Layer | Historical name | Phase 1.1 name |
+| --- | --- | --- |
+| Brand, repository and workspace | `Nukytera` | `Corinthos` |
+| Python distribution | `nukytera-core` | `corinthos-core` |
+| Import package and CLI | `nukytera` | `corinthos` |
+| Source directory | `src/nukytera/` | `src/corinthos/` |
+| Private state directory | `.nukytera/` | `.corinthos/` |
+
+The import prefix change is intentional. Current integrations use
+`corinthos` as their sole import prefix and console command. Product target
+Core v0.1, PRD revision v0.2 and package version `0.1.0` remain separate.
+The five Commandments, six planned Engines, eight contract types, verified
+approval rules and MPL-2.0 continue to govern the project.
+
+The schema namespace `urn:nukytera:contracts:1.0:*`, Standard reference
+`nukytera-standard` version `0.1`, JSON wire version `1.0`, SQLite application
+ID `0x4E554B59` and SQLite `user_version = 1` are durable identities.
+Retaining them preserves offline schema resolution and existing immutable
+contracts, approvals, evidence and audits. The
+[state migration procedure](storage.md#migrating-existing-project-state)
+copies a verified closed store without rewriting those records. Both old and
+current state directories remain excluded from Git.
+
+The reviewed migration pull request records the exact runtime verification and
+publication evidence. The project owner authorizes integration and Phase 2
+separately.
 
 ## Technical references
 
