@@ -2,16 +2,19 @@
 """Validated policy preparation and explicit, bounded external-agent calls."""
 
 import os
+import queue
 import re
 import shutil
 import stat
 import subprocess
 import tempfile
+import threading
 from copy import deepcopy
 from hashlib import sha256
 from math import isfinite
 from pathlib import Path
 from threading import Lock
+from time import monotonic
 from uuid import uuid4
 
 from corinthos.contracts import ContractRef, ContractStore, IntegrityError
@@ -20,6 +23,7 @@ from corinthos.standard import load_standard
 
 from .model import AgentResult, Capabilities, ContextInput, PreparedContext
 from .process import run_process
+from .process_control import start_process
 from .providers import PROVIDERS, session_id
 
 _BEGIN = b"<!-- corinthos:standard begin sha256="
@@ -133,20 +137,63 @@ class AdapterManager:
     @staticmethod
     def _help(command, arguments):
         try:
-            result = subprocess.run(
+            managed = start_process(
                 [*command, *arguments],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 shell=False,
-                timeout=10,
                 env=os.environ.copy(),
             )
-            if result.returncode or len(result.stdout) + len(result.stderr) > 1_048_576:
-                return None
-            return (result.stdout + result.stderr).decode("utf-8", errors="replace")
-        except (OSError, subprocess.TimeoutExpired):
+        except OSError:
             return None
+        process = managed.process
+        chunks, stopped = queue.Queue(maxsize=16), threading.Event()
+
+        def read():
+            try:
+                while not stopped.is_set():
+                    data = process.stdout.read(65_536)
+                    while not stopped.is_set():
+                        try:
+                            chunks.put(data, timeout=0.05)
+                            break
+                        except queue.Full:
+                            continue
+                    if not data:
+                        break
+            except (OSError, ValueError):
+                pass
+
+        reader = threading.Thread(target=read, daemon=True)
+        reader.start()
+        output, ended, failed = bytearray(), False, False
+        deadline = monotonic() + 10
+        try:
+            while not ended or process.poll() is None:
+                if monotonic() >= deadline:
+                    failed = True
+                    break
+                try:
+                    data = chunks.get(timeout=0.05)
+                except queue.Empty:
+                    continue
+                if not data:
+                    ended = True
+                elif len(output) + len(data) > 1_048_576:
+                    failed = True
+                    break
+                else:
+                    output.extend(data)
+        finally:
+            cleanup = managed.finish()
+            stopped.set()
+            if cleanup:
+                process.stdout.close()
+            reader.join(timeout=0.2)
+        if failed or not cleanup or process.returncode:
+            return None
+        return output.decode("utf-8", errors="replace")
 
     def discover(self, provider):
         self._provider(provider)

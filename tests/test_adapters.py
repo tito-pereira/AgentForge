@@ -243,20 +243,14 @@ def test_timeout_or_explicit_cancellation_stops_process_and_keeps_partial_identi
     tmp_path, factory, cancelled
 ):
     cancel = threading.Event()
-    timer = threading.Timer(0.5, cancel.set) if cancelled else None
-    if timer:
-        timer.start()
-    try:
-        result = factory(mode="delay").probe(
-            "codex",
-            tmp_path,
-            "Read-only diagnostic.",
-            timeout=3 if cancelled else 0.5,
-            cancel=cancel,
-        )
-    finally:
-        if timer:
-            timer.cancel()
+    result = factory(mode="delay").probe(
+        "codex",
+        tmp_path,
+        "Read-only diagnostic.",
+        timeout=3 if cancelled else 0.5,
+        cancel=cancel,
+        on_event=(lambda event: cancel.set()) if cancelled else None,
+    )
     assert result.status == ("CANCELLED" if cancelled else "TIMEOUT")
     assert result.session_id == _SESSION
     assert result.cleanup_confirmed and result.duration_seconds < 8

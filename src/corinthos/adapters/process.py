@@ -4,65 +4,16 @@
 import json
 import os
 import queue
-import signal
 import subprocess
 import threading
 from time import monotonic
 
 from .model import AgentResult
+from .process_control import start_process
 
 _MAX_LINE = 1_048_576
 _MAX_OUTPUT = 8_388_608
 _MAX_EVENTS = 10_000
-
-
-def _stop(process):
-    if process.poll() is not None and os.name == "nt":
-        # The departed parent can no longer anchor a reliable Windows tree lookup.
-        return False
-    if process.poll() is not None and os.name != "nt":
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        return True
-    try:
-        if os.name == "nt":
-            stopped = subprocess.run(
-                [
-                    os.path.join(
-                        os.environ.get("SystemRoot", r"C:\Windows"), "System32", "taskkill.exe"
-                    ),
-                    "/PID",
-                    str(process.pid),
-                    "/T",
-                    "/F",
-                ],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=5,
-            )
-            tree_stopped = stopped.returncode == 0
-        else:
-            os.killpg(process.pid, signal.SIGTERM)
-        try:
-            process.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            if os.name == "nt":
-                process.kill()
-            else:
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait(timeout=2)
-        if os.name != "nt":
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            tree_stopped = True
-        return tree_stopped
-    except (OSError, subprocess.TimeoutExpired):
-        return False
 
 
 def run_process(
@@ -93,13 +44,8 @@ def run_process(
     }
     events, status, error_kind = [], None, None
     command = provider.command(prefix, resume=resume, read_only=read_only)
-    options = (
-        {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-        if os.name == "nt"
-        else {"start_new_session": True}
-    )
     try:
-        process = subprocess.Popen(
+        managed = start_process(
             command,
             cwd=workspace,
             stdin=subprocess.PIPE,
@@ -107,9 +53,9 @@ def run_process(
             stderr=subprocess.PIPE,
             env=os.environ.copy(),
             shell=False,
-            **options,
         )
-    except OSError:
+        process = managed.process
+    except OSError as error:
         return AgentResult(
             provider.name,
             "UNAVAILABLE",
@@ -117,6 +63,7 @@ def run_process(
             attempt_id,
             version=capabilities.version,
             error_kind="PROCESS_START_FAILED",
+            cleanup_confirmed=getattr(error, "cleanup_confirmed", True),
         )
     messages = queue.Queue(maxsize=64)
     stopping = threading.Event()
@@ -197,8 +144,7 @@ def run_process(
                 status, error_kind = "PROTOCOL_ERROR", "MALFORMED_EVENT"
                 break
     finally:
-        if status is not None or process.poll() is None:
-            cleanup = _stop(process)
+        cleanup = managed.finish()
         stopping.set()
         for stream in (process.stdin, process.stdout, process.stderr):
             if not cleanup:
