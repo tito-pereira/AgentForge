@@ -124,7 +124,7 @@ def test_v1_upgrade_preserves_all_contract_records_and_verified_backup(tmp_path,
 
     store = ContractStore(tmp_path)
 
-    assert _database_version(database) == 2
+    assert _database_version(database) == 4
     assert _contract_records(database) == before
     backups = list(private.glob("state.pre-v2-*.db"))
     assert len(backups) == 1
@@ -159,7 +159,7 @@ def test_failed_v2_upgrade_rolls_back_to_v1_and_retains_backup(
     backup = next(private.glob("state.pre-v2-*.db"))
     assert _contract_records(backup) == before
     assert ContractStore(tmp_path).list_events()
-    assert _database_version(database) == 2
+    assert _database_version(database) == 4
     assert backup.exists()
 
 
@@ -206,9 +206,9 @@ def test_concurrent_openers_upgrade_v1_once(tmp_path, original_state):
     assert _contract_records(private / "state.db") == before
 
 
-def test_fresh_v2_store_needs_no_preupgrade_backup(tmp_path):
+def test_fresh_store_needs_no_preupgrade_backup(tmp_path):
     store = ContractStore(tmp_path)
-    assert _database_version(store.database_path) == 2
+    assert _database_version(store.database_path) == 4
     assert not list(store.database_path.parent.glob("state.pre-v2-*.db"))
 
 
@@ -220,11 +220,11 @@ def test_legacy_copy_stays_v1_until_explicit_open_upgrades_it(legacy):
     assert _database_version(target) == 1
     assert not migration.migrate_legacy_state(legacy.parent)
     assert len(ContractStore(legacy.parent).list_events()) == 9
-    assert _database_version(target) == 2
+    assert _database_version(target) == 4
     assert (legacy / "state.db").read_bytes() == original
 
 
-def test_files_only_migration_also_preserves_an_existing_v2_store(tmp_path):
+def test_files_only_migration_also_preserves_a_current_store(tmp_path):
     store = ContractStore(tmp_path)
     with store._transaction() as connection:
         connection.execute(

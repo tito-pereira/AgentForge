@@ -170,7 +170,7 @@ def migrate_legacy_state(project_root: str | Path) -> bool:
             connection.execute("BEGIN EXCLUSIVE")
             _check_database(database)
             application, version = _markers(connection)
-            if application != _APPLICATION_ID or version not in (1, _SCHEMA_VERSION):
+            if application != _APPLICATION_ID or version not in (1, 2, 3, _SCHEMA_VERSION):
                 raise StoreError(
                     "The legacy state database application or schema version is unsupported."
                 )

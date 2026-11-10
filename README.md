@@ -6,7 +6,8 @@ verification. It aims to preserve engineering standards when working with
 different agents, initially Codex and Claude Code.
 
 The implementation includes the **Phase 0 foundation**, **Phase 1 Contract
-Kernel** and **Phase 2 Project Manager**, with package version `0.1.0`.
+Kernel**, **Phase 2 Project Manager** and **Phase 3 Workflow + Adapters**, with
+package version `0.1.0`.
 Phase 0 established English-language public
 development, clean Windows and Linux environments and MPL 2.0.
 The product target remains Core v0.1, based on product specification revision v0.2.
@@ -32,10 +33,20 @@ Earlier names and execution evidence are recorded in [decisions](docs/decisions.
   requirements, complete reviews, and explicit local terminal approval.
 - Bounded intake of published Project Revision Requests and immutable approved
   Project revisions through the existing Kernel.
+- Guided technology and module planning, exact provider/consumer interfaces,
+  verification specifications, checkpoints and optional milestone plans.
+- Complete TDC/Module/Workflow review and publication with per-document human
+  receipts and bounded dependency-only delegation.
+- Sequential checkpoint attempts, actual command/artifact checks, explicit
+  preliminary technical review, fenced workspace leases and inspected recovery.
+- Conservative revision reconciliation and bounded structural requests routed
+  through the real Kernel and Project Manager.
 
 The six Engines use the same kernel. Project Manager provides human-led structured
-negotiation. Execution adapters, workflow scheduling, independent validation
-runners, report generation and experimental builds belong to subsequent phases.
+negotiation. Adapter Manager has separate Codex and Claude provider boundaries.
+Workflow supports engineering planning, sequential execution and inspected
+recovery. Independent Validation runners, Report and experimental-build promotion
+remain subsequent Engine work.
 Natural-language consistency and technical feasibility require human review.
 
 ## Five Engineering Commandments
@@ -166,6 +177,59 @@ The [Project Manager guide](docs/project-manager.md) covers every command,
 negotiation states, exact approval, recovery, revision requests and the Python API.
 Use `corinthos project --help` to inspect the command list.
 
+## Plan the approved project
+
+After publishing the Project specification, copy its logical contract ID from
+the published reference and substitute it below.
+
+```powershell
+.\.venv\Scripts\corinthos.exe workflow --root . plan YOUR_PROJECT_CONTRACT_ID
+```
+
+For POSIX, use `.venv/bin/corinthos workflow --root . plan YOUR_PROJECT_CONTRACT_ID`.
+Choose the exact approved revision. The numbered editor collects module
+responsibilities, assigned requirements/constraints, evaluated technology options,
+exact interfaces, verification requirements, checkpoints and optional milestones.
+Use **Review complete publication set** to inspect every TDC, Module and Workflow
+candidate, its digest, source references and previous differences. The foreground
+terminal authorizes the exact set once before dependency-ordered publication.
+Existing bounded mandates may authorize dependency-only replans after their
+scope, actor and freshness are verified.
+
+**Save for later and leave** preserves accepted planning choices. Resume with
+`corinthos workflow --root . resume` through the same venv executable. These are
+engineering plans. The authorized E–J continuation adds actual execution,
+recovery, a fixed local task-manager pilot and verifiable release evidence.
+
+The [Workflow planning guide](docs/workflow-planning.md) documents the full
+journey, commands, APIs, authority and partial-publication boundaries. The
+[Adapter Manager guide](docs/adapters.md) records provider capabilities and
+separate live-verification evidence.
+
+## Execute and inspect an approved plan
+
+Configure each approved checkpoint's actual verification commands, deliverable
+files and permitted source paths through guided questions. Supply the existing
+Standard policy/schema when working outside the Corinthos checkout.
+
+```text
+corinthos workflow --root PROJECT_ROOT configure WORKFLOW_CONTRACT_ID --policy STANDARD_YAML --policy-schema STANDARD_SCHEMA
+corinthos workflow --root PROJECT_ROOT executions
+corinthos workflow --root PROJECT_ROOT status EXECUTION_ID
+corinthos workflow --root PROJECT_ROOT execute EXECUTION_ID --provider codex --policy STANDARD_YAML --policy-schema STANDARD_SCHEMA
+```
+
+Execution requests one eligible checkpoint, records the real provider attempt,
+runs actual checks and asks for preliminary technical review of the exact
+artifact. A failed or interrupted attempt preserves its evidence. Use the
+explicit `recover` journey to inspect effects before retrying or verifying
+existing files. Changed active sources require approved-plan reconciliation.
+Published independent gates remain mandatory when applicable.
+
+The [execution and reconciliation guide](docs/workflow-execution.md) covers
+native Windows executable selection, commands, leases, review, recovery,
+preserved evidence and bounded Project Revision Requests.
+
 ## Standard validation
 
 `policies/standard.yaml` declares M1–M5. `schemas/standard.schema.json` requires
@@ -209,6 +273,8 @@ exercise the API without certifying a product. See the
 | `src/corinthos/` | Package version, CLI, Standard loader and Contract Kernel. |
 | `src/corinthos/contracts/schemas/` | Eight executable schemas and shared definitions, installed with the package. |
 | `src/corinthos/project_manager/` | Negotiation service, persistent sessions, complete reviews and local terminal approval. |
+| `src/corinthos/workflow/` | Planning, exact authorization, sequential execution, durable recovery and revision reconciliation. |
+| `src/corinthos/adapters/` | Provider discovery, equivalent Standard context and separate Codex/Claude process boundaries. |
 | `examples/` | Eight sample contracts and the executable kernel demonstration. |
 | `policies/` | Versioned Standard policy. |
 | `schemas/` | Structural schema for the initial Standard. |
@@ -238,15 +304,20 @@ Review staged content before committing.
 | 6 — Evolution + Hardening | Product evolution, isolated builds, feedback, recovery, and robustness. |
 
 These are construction phases. Each requires bounded tasks, tests, documentation,
-and review. Phase 2 changes use a reviewed feature pull request. The project
-owner authorizes its integration and the start of Phase 3 separately.
+and review. The initial A–D stop is recorded historically. The owner subsequently
+authorized E–J, including the installed local task-manager pilot and a reviewed
+release. Actual results and outstanding limits remain tied to their evidence.
 
 ## Engineering documentation
 
 - [Architecture and six Engines](docs/architecture.md)
 - [Eight contract types](docs/contracts.md)
 - [Project Manager tutorial, approval and service API](docs/project-manager.md)
+- [Workflow planning and exact approval](docs/workflow-planning.md)
+- [Execution, recovery and revision reconciliation](docs/workflow-execution.md)
+- [Adapter Manager capabilities and verification](docs/adapters.md)
 - [SQLite storage and recovery](docs/storage.md)
+- [Phase 3 installed-wheel and native verification](docs/phase-3-verification.md)
 - [Workflows, gates, and authority](docs/workflows.md)
 - [Implementation plan and acceptance criteria](docs/implementation-plan.md)
 - [Decisions, verification history, and limits](docs/decisions.md)

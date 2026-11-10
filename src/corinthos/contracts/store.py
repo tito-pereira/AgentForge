@@ -28,7 +28,7 @@ from .schema import validate_schema
 from .semantics import validate_semantics
 
 _APPLICATION_ID = 0x4E554B59
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 4
 _LOCK_TIMEOUT = 5.0
 _BUSY_CODES = {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
 _ACTIVE_TYPES = frozenset({"PROJECT", "WORKFLOW", "MODULE", "TECHNOLOGY_DECISION", "VALIDATION"})
@@ -137,8 +137,161 @@ _MIGRATION_V2 = (
        WHEN EXISTS (SELECT 1 FROM pm_approvals WHERE approval_id = NEW.approval_id)
        BEGIN SELECT RAISE(ABORT, 'Approval bindings are immutable and single-use'); END""",
 )
+_MIGRATION_V3 = (
+    """CREATE TABLE wf_sessions (
+        session_id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL,
+        version INTEGER NOT NULL CHECK (version >= 1),
+        snapshot TEXT NOT NULL
+    )""",
+    """CREATE TABLE wf_turns (
+        turn_id TEXT PRIMARY KEY NOT NULL,
+        session_id TEXT NOT NULL REFERENCES wf_sessions (session_id),
+        version INTEGER NOT NULL CHECK (version >= 1),
+        actor_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        snapshot TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        UNIQUE (session_id, version)
+    )""",
+    """CREATE TABLE wf_mandates (
+        mandate_id TEXT PRIMARY KEY NOT NULL,
+        session_id TEXT NOT NULL REFERENCES wf_sessions (session_id),
+        project_id TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        invariant_sha256 TEXT NOT NULL,
+        workflow_ref TEXT NOT NULL,
+        expires_at REAL NOT NULL
+    )""",
+    """CREATE TABLE wf_approvals (
+        approval_id TEXT PRIMARY KEY NOT NULL,
+        session_id TEXT NOT NULL REFERENCES wf_sessions (session_id),
+        session_version INTEGER NOT NULL CHECK (session_version >= 1),
+        project_id TEXT NOT NULL,
+        contract_id TEXT NOT NULL,
+        revision_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('HUMAN', 'DELEGATED')),
+        content_sha256 TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        expires_at REAL NOT NULL,
+        mandate_id TEXT REFERENCES wf_mandates (mandate_id),
+        consumed INTEGER NOT NULL DEFAULT 0 CHECK (consumed IN (0, 1))
+    )""",
+    """CREATE TRIGGER wf_turns_no_update BEFORE UPDATE ON wf_turns
+       BEGIN SELECT RAISE(ABORT, 'Planning turns are append-only'); END""",
+    """CREATE TRIGGER wf_turns_no_delete BEFORE DELETE ON wf_turns
+       BEGIN SELECT RAISE(ABORT, 'Planning turns are append-only'); END""",
+    """CREATE TRIGGER wf_turns_no_replace BEFORE INSERT ON wf_turns
+       WHEN EXISTS (SELECT 1 FROM wf_turns WHERE turn_id = NEW.turn_id
+           OR (session_id = NEW.session_id AND version = NEW.version))
+       BEGIN SELECT RAISE(ABORT, 'Planning turns are append-only'); END""",
+    """CREATE TRIGGER wf_approvals_binding BEFORE UPDATE ON wf_approvals
+       WHEN OLD.approval_id IS NOT NEW.approval_id
+         OR OLD.session_id IS NOT NEW.session_id
+         OR OLD.session_version IS NOT NEW.session_version
+         OR OLD.project_id IS NOT NEW.project_id
+         OR OLD.contract_id IS NOT NEW.contract_id
+         OR OLD.revision_id IS NOT NEW.revision_id
+         OR OLD.kind IS NOT NEW.kind
+         OR OLD.content_sha256 IS NOT NEW.content_sha256
+         OR OLD.actor_id IS NOT NEW.actor_id
+         OR OLD.expires_at IS NOT NEW.expires_at
+         OR OLD.mandate_id IS NOT NEW.mandate_id
+         OR NOT (OLD.consumed = 0 AND NEW.consumed = 1)
+       BEGIN SELECT RAISE(ABORT, 'Planning approval bindings are immutable'); END""",
+    """CREATE TRIGGER wf_approvals_no_delete BEFORE DELETE ON wf_approvals
+       BEGIN SELECT RAISE(ABORT, 'Planning approvals are retained'); END""",
+    """CREATE TRIGGER wf_approvals_no_replace BEFORE INSERT ON wf_approvals
+       WHEN EXISTS (SELECT 1 FROM wf_approvals WHERE approval_id = NEW.approval_id)
+       BEGIN SELECT RAISE(ABORT, 'Planning approval bindings are immutable'); END""",
+    """CREATE TRIGGER wf_mandates_no_update BEFORE UPDATE ON wf_mandates
+       BEGIN SELECT RAISE(ABORT, 'Planning mandates are immutable'); END""",
+    """CREATE TRIGGER wf_mandates_no_delete BEFORE DELETE ON wf_mandates
+       BEGIN SELECT RAISE(ABORT, 'Planning mandates are retained'); END""",
+    """CREATE TRIGGER wf_mandates_no_replace BEFORE INSERT ON wf_mandates
+       WHEN EXISTS (SELECT 1 FROM wf_mandates WHERE mandate_id = NEW.mandate_id)
+       BEGIN SELECT RAISE(ABORT, 'Planning mandates are immutable'); END""",
+)
+_MIGRATION_V4 = (
+    """CREATE TABLE wf_executions (
+        execution_id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL,
+        workflow_ref TEXT NOT NULL,
+        workspace TEXT NOT NULL,
+        bindings TEXT NOT NULL,
+        bindings_sha256 TEXT NOT NULL,
+        version INTEGER NOT NULL CHECK (version >= 1),
+        state TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE wf_checkpoints (
+        execution_id TEXT NOT NULL REFERENCES wf_executions (execution_id),
+        checkpoint_id TEXT NOT NULL,
+        state TEXT NOT NULL,
+        attempt_id TEXT REFERENCES wf_attempts (attempt_id),
+        inherited_from TEXT,
+        PRIMARY KEY (execution_id, checkpoint_id)
+    )""",
+    """CREATE TABLE wf_attempts (
+        attempt_id TEXT PRIMARY KEY NOT NULL,
+        execution_id TEXT NOT NULL,
+        checkpoint_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        fence INTEGER NOT NULL CHECK (fence >= 1),
+        provider TEXT NOT NULL,
+        state TEXT NOT NULL,
+        context TEXT NOT NULL,
+        details TEXT NOT NULL,
+        previous_attempt_id TEXT REFERENCES wf_attempts (attempt_id),
+        execution_version INTEGER NOT NULL CHECK (execution_version >= 1),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (execution_id, checkpoint_id)
+            REFERENCES wf_checkpoints (execution_id, checkpoint_id)
+    )""",
+    """CREATE TABLE wf_workspace_leases (
+        workspace TEXT PRIMARY KEY NOT NULL,
+        execution_id TEXT NOT NULL REFERENCES wf_executions (execution_id),
+        attempt_id TEXT UNIQUE REFERENCES wf_attempts (attempt_id),
+        owner_id TEXT,
+        fence INTEGER NOT NULL DEFAULT 0 CHECK (fence >= 0),
+        expires_at REAL NOT NULL DEFAULT 0
+    )""",
+    """CREATE TABLE wf_execution_events (
+        sequence INTEGER PRIMARY KEY,
+        event_id TEXT NOT NULL UNIQUE,
+        execution_id TEXT NOT NULL REFERENCES wf_executions (execution_id),
+        checkpoint_id TEXT,
+        attempt_id TEXT REFERENCES wf_attempts (attempt_id),
+        actor_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        data TEXT NOT NULL,
+        occurred_at TEXT NOT NULL
+    )""",
+    """CREATE TRIGGER wf_execution_events_no_update BEFORE UPDATE ON wf_execution_events
+       BEGIN SELECT RAISE(ABORT, 'Execution observations are append-only'); END""",
+    """CREATE TRIGGER wf_execution_events_no_delete BEFORE DELETE ON wf_execution_events
+       BEGIN SELECT RAISE(ABORT, 'Execution observations are append-only'); END""",
+    """CREATE TRIGGER wf_execution_events_no_replace BEFORE INSERT ON wf_execution_events
+       WHEN EXISTS (SELECT 1 FROM wf_execution_events
+                    WHERE sequence = NEW.sequence OR event_id = NEW.event_id)
+       BEGIN SELECT RAISE(ABORT, 'Execution observations are append-only'); END""",
+)
 _REQUIRED_TABLES_V1 = frozenset({"contracts", "revisions", "contract_references", "audit_events"})
-_REQUIRED_TABLES = _REQUIRED_TABLES_V1 | {"pm_sessions", "pm_turns", "pm_approvals"}
+_REQUIRED_TABLES_V2 = _REQUIRED_TABLES_V1 | {"pm_sessions", "pm_turns", "pm_approvals"}
+_REQUIRED_TABLES_V3 = _REQUIRED_TABLES_V2 | {
+    "wf_sessions",
+    "wf_turns",
+    "wf_approvals",
+    "wf_mandates",
+}
+_REQUIRED_TABLES = _REQUIRED_TABLES_V3 | {
+    "wf_executions",
+    "wf_checkpoints",
+    "wf_attempts",
+    "wf_workspace_leases",
+    "wf_execution_events",
+}
 _REVISIONS = """SELECT revisions.*, contracts.contract_type, contracts.project_id,
                 contracts.active_revision_id
                 FROM revisions JOIN contracts USING (contract_id)"""
@@ -157,12 +310,20 @@ def _markers(connection: sqlite3.Connection) -> tuple[int, int]:
 
 def _verify_database(connection: sqlite3.Connection, version: int) -> None:
     """Check a supported schema without upgrading or rewriting its records."""
-    if version not in (1, _SCHEMA_VERSION) or _markers(connection) != (_APPLICATION_ID, version):
+    if version not in (1, 2, 3, _SCHEMA_VERSION) or _markers(connection) != (
+        _APPLICATION_ID,
+        version,
+    ):
         raise StoreError("The state database application or schema version is unsupported.")
     tables = {
         row[0] for row in connection.execute("SELECT name FROM sqlite_schema WHERE type = 'table'")
     }
-    required = _REQUIRED_TABLES_V1 if version == 1 else _REQUIRED_TABLES
+    required = {
+        1: _REQUIRED_TABLES_V1,
+        2: _REQUIRED_TABLES_V2,
+        3: _REQUIRED_TABLES_V3,
+        4: _REQUIRED_TABLES,
+    }[version]
     if not required <= tables:
         raise StoreError("The state database schema is incomplete.")
     if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
@@ -280,14 +441,14 @@ class ContractStore:
 
     def _migrate(self, connection: sqlite3.Connection) -> None:
         application, version = _markers(connection)
-        if application == _APPLICATION_ID and version in (1, _SCHEMA_VERSION):
+        if application == _APPLICATION_ID and version in (1, 2, 3, _SCHEMA_VERSION):
             _verify_database(connection, version)
             if version == _SCHEMA_VERSION:
                 return
             if not self.database_path.stat().st_mode & stat.S_IWUSR:
                 raise StoreError("The state database is read-only.")
             # The write reservation prevents another constructor or publisher
-            # changing v1 while a separate read connection backs it up.
+            # changing the source while a separate connection backs it up.
             # Backing up the connection holding BEGIN IMMEDIATE would stall.
             uri = f"{self.database_path.as_uri()}?mode=ro"
             with closing(
@@ -295,15 +456,22 @@ class ContractStore:
             ) as source:
                 source.execute("PRAGMA trusted_schema = OFF")
                 source.execute("PRAGMA foreign_keys = ON")
-                backup = self.database_path.with_name(f"state.pre-v2-{uuid4().hex}.db")
-                self._copy_backup(source, backup, version=1)
+                backup = self.database_path.with_name(f"state.pre-v{version + 1}-{uuid4().hex}.db")
+                self._copy_backup(source, backup, version=version)
         else:
             has_objects = connection.execute("SELECT 1 FROM sqlite_schema LIMIT 1").fetchone()
             if application != 0 or version != 0 or has_objects is not None:
                 raise StoreError("The state database application or schema version is unsupported.")
             for statement in _MIGRATION_V1:
                 connection.execute(statement)
-        for statement in _MIGRATION_V2:
+            version = 1
+        if version < 2:
+            for statement in _MIGRATION_V2:
+                connection.execute(statement)
+        if version < 3:
+            for statement in _MIGRATION_V3:
+                connection.execute(statement)
+        for statement in _MIGRATION_V4:
             connection.execute(statement)
         connection.execute(f"PRAGMA application_id = {_APPLICATION_ID}")
         connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")

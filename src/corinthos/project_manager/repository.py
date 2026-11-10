@@ -57,6 +57,9 @@ def _read_snapshot(row: sqlite3.Row) -> dict:
 class SessionRepository:
     """Store bounded JSON snapshots with optimistic session version checks."""
 
+    _sessions_table = "pm_sessions"
+    _turns_table = "pm_turns"
+
     def __init__(self, store: ContractStore):
         if not isinstance(store, ContractStore):
             raise StoreError("Session persistence requires a ContractStore.")
@@ -66,8 +69,10 @@ class SessionRepository:
     def store(self) -> ContractStore:
         return self._store
 
-    @staticmethod
-    def _turn(connection: sqlite3.Connection, snapshot: dict, actor_id: str, action: str) -> None:
+    @classmethod
+    def _turn(
+        cls, connection: sqlite3.Connection, snapshot: dict, actor_id: str, action: str
+    ) -> None:
         _identifier(actor_id)
         if (
             not isinstance(action, str)
@@ -77,7 +82,7 @@ class SessionRepository:
         ):
             raise StoreError("A session action must be nonblank text of at most 128 characters.")
         connection.execute(
-            "INSERT INTO pm_turns "
+            f"INSERT INTO {cls._turns_table} "
             "(turn_id, session_id, version, actor_id, action, snapshot, occurred_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
@@ -100,7 +105,7 @@ class SessionRepository:
         saved = _snapshot(snapshot, version=1)
         with self.store._transaction() as connection:
             connection.execute(
-                "INSERT INTO pm_sessions (session_id, project_id, version, snapshot) "
+                f"INSERT INTO {self._sessions_table} (session_id, project_id, version, snapshot) "
                 "VALUES (?, ?, ?, ?)",
                 (saved["session_id"], saved["project_id"], 1, canonical_json(saved)),
             )
@@ -112,7 +117,7 @@ class SessionRepository:
         _identifier(session_id)
         with self.store._connection() as connection:
             row = connection.execute(
-                "SELECT * FROM pm_sessions WHERE session_id = ?", (session_id,)
+                f"SELECT * FROM {self._sessions_table} WHERE session_id = ?", (session_id,)
             ).fetchone()
             if row is None:
                 raise StoreError("The negotiation session does not exist.")
@@ -121,7 +126,7 @@ class SessionRepository:
     def list(self) -> list[dict]:
         """List detached session snapshots in creation order."""
         with self.store._connection() as connection:
-            rows = connection.execute("SELECT * FROM pm_sessions ORDER BY rowid")
+            rows = connection.execute(f"SELECT * FROM {self._sessions_table} ORDER BY rowid")
             return [_read_snapshot(row) for row in rows]
 
     def save(
@@ -169,14 +174,15 @@ class SessionRepository:
         if saved["session_id"] != session_id:
             raise ConflictError("A negotiation session cannot change its identity.")
         row = connection.execute(
-            "SELECT project_id, version FROM pm_sessions WHERE session_id = ?", (session_id,)
+            f"SELECT project_id, version FROM {self._sessions_table} WHERE session_id = ?",
+            (session_id,),
         ).fetchone()
         if row is None:
             raise StoreError("The negotiation session does not exist.")
         if row["project_id"] != saved["project_id"] or row["version"] != expected_version:
             raise ConflictError("The session changed. Reload it before continuing.")
         cursor = connection.execute(
-            "UPDATE pm_sessions SET version = ?, snapshot = ? "
+            f"UPDATE {self._sessions_table} SET version = ?, snapshot = ? "
             "WHERE session_id = ? AND project_id = ? AND version = ?",
             (
                 saved["version"],
@@ -196,8 +202,8 @@ class SessionRepository:
         self.get(session_id)
         with self.store._connection() as connection:
             rows = connection.execute(
-                "SELECT pm_turns.*, pm_sessions.project_id FROM pm_turns "
-                "JOIN pm_sessions USING (session_id) "
+                f"SELECT {self._turns_table}.*, {self._sessions_table}.project_id "
+                f"FROM {self._turns_table} JOIN {self._sessions_table} USING (session_id) "
                 "WHERE session_id = ? ORDER BY version",
                 (session_id,),
             )

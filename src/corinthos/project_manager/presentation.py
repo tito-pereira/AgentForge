@@ -47,7 +47,8 @@ def render_review(
     warnings: tuple | list = (),
 ) -> str:
     """Show the complete candidate, immutable review identity and full prior diff."""
-    lines = ["PROJECT CONTRACT REVIEW"]
+    contract_type = safe_text(document.get("metadata", {}).get("contract_type", "PROJECT"))
+    lines = [contract_type.replace("_", " ") + " CONTRACT REVIEW"]
     if sha256 is not None:
         lines.extend(("Canonical SHA-256", "  " + safe_text(sha256)))
     if expires_at is not None:

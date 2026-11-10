@@ -14,7 +14,7 @@ from .service import ProjectManager
 _MAX_ANSWER = 8192
 
 
-def configure_parser(parser: argparse.ArgumentParser) -> None:
+def configure_parser(parser: argparse.ArgumentParser):
     commands = parser.add_subparsers(dest="command")
     project = commands.add_parser("project", help="Create, negotiate and review a project.")
     project.add_argument(
@@ -46,6 +46,7 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
                 "session_id", nargs="?", help="Saved session ID, or select from a list."
             )
         action.set_defaults(handler=run)
+    return commands
 
 
 def _answer(prompt: str, *, default: str | None = None, optional: bool = False) -> str:
