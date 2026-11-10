@@ -1,10 +1,24 @@
 # Workflows, gates, and review
 
 Baseline dated November 8, 2026, aligned with product requirements revision v0.2.
-The following flows describe approved behavior for future phases. The Phase 0
-scaffold provides CLI help/version, the Standard policy, minimal structural
-validation, tests, and static analysis. Explicit technical review provides the
-initial control over implementation evidence.
+The following runtime flows describe approved behavior for subsequent execution
+work. Phase 3.0 A–D provides the [planning service](workflow-planning.md), exact
+TDC/Module/Workflow publication and [Adapter Manager](adapters.md) boundaries.
+Scheduler/execution, full recovery, impact propagation and the live pilot require
+later authorization. Explicit technical review evaluates implementation evidence.
+
+## Implemented planning boundary
+
+The guided terminal starts from an exact approved Project revision and collects
+source-linked modules, evaluated technology choices, provider/consumer interfaces,
+blocking verification requirements, checkpoints and optional milestone plans.
+Full frozen-set review captures applicable decisions once. Exact human receipts
+and genuine bounded delegation support dependency-ordered Kernel publication.
+
+Planning sessions, accepted choices and publication receipts are operational
+state. They remain distinct from the runtime checkpoint lifecycle below. A saved
+checkpoint or milestone specifies future obligations. It supplies no execution,
+Validation, playtest availability or product acceptance evidence.
 
 ## Execution and authority
 

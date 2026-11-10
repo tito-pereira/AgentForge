@@ -121,6 +121,30 @@ Execution results and remaining limitations are recorded in the PR and
 [decision log](decisions.md). Local checks and observed remote CI retain their
 own environments and exact tested commit identities.
 
+## Phase 3.0 authorized A–D scope
+
+This increment begins from integrated Phase 2 commit
+`139d1542f9b15938985909ab1124832cd69de607`. Its verified installed-wheel baseline
+passed the existing 245 tests before changes. Current authorization covers only
+construction checkpoints A–D, followed by an explicit stop.
+
+| Checkpoint | Required evidence |
+| --- | --- |
+| 3.0.A | Verified baseline, executable service/adapter design and requirement traceability. |
+| 3.0.B | Separate real provider boundaries, equivalent mandatory Standard, honest capabilities and advisory PM assistance. |
+| 3.0.C | Evaluated alternatives, exact human authorization, per-document receipts and verified bounded delegation. |
+| 3.0.D | Source-linked modules/interfaces, blocking verification plans, checkpoint/milestone graphs and guided publication. |
+
+The [Workflow planning guide](workflow-planning.md) records the user journey,
+API, state/authority boundaries and A–D traceability. The
+[Adapter Manager guide](adapters.md) records supported process interfaces and
+separates protocol tests from live-provider evidence. The current tests and
+documentation support the authorized A–D deliverables, without treating them as
+completion of the later release checkpoints.
+
+Scheduler execution, general process recovery, impact propagation, the live
+project pilot, full release CI and PR checkpoints E–J require a subsequent order.
+
 ## Gates and the next phase
 
 Each unit has an objective, scope, interfaces, criteria, and tests proportionate
@@ -129,10 +153,10 @@ technologies, meaningful testing, accurate documentation, and readable code.
 Until Validation is implemented, automated tests and explicit technical review
 evaluate the evidence.
 
-Phase 2 uses the shared infrastructure for human-led Project negotiation. The
-project owner authorizes its merge and the start of Phase 3 separately.
-Execution adapters, scheduling, independent audits and report generation remain
-future Engine responsibilities.
+Phase 2 provides human-led Project negotiation and Phase 3.0 A–D adds engineering
+planning and Adapter Manager boundaries. The project owner authorizes remaining
+construction checkpoints separately. Scheduling, independent audits and report
+generation remain future Engine responsibilities.
 
 Once Project Manager, Workflow, a minimal adapter, and operational persistence
 exist, run a small isolated pilot. Repeat it once Validation and Report are
@@ -143,6 +167,7 @@ operational. The Bench follows construction of the Core.
 - [Architecture](architecture.md)
 - [Contract catalogue](contracts.md)
 - [Project Manager guide and traceability](project-manager.md)
+- [Workflow planning and A–D scope](workflow-planning.md)
 - [Workflow scopes and approval rules](workflows.md)
 - [Practical decisions and historical verification](decisions.md)
 - [Contributor instructions](../AGENTS.md)

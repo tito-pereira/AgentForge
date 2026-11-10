@@ -6,7 +6,7 @@ private. Keep `.corinthos/`, backups, journals, and the legacy `.nukytera/`
 and `.agentforge/` directories out of Git. The library uses normal OS
 permissions and parameterized SQL.
 
-## SQLite version 2
+## SQLite version 3
 
 | Table | Contents |
 | --- | --- |
@@ -17,15 +17,33 @@ permissions and parameterized SQL.
 | `pm_sessions` | Current negotiation snapshot and optimistic session version. |
 | `pm_turns` | Append-only accepted actions, actor labels and complete session snapshots. |
 | `pm_approvals` | Exact local review bindings, expiry and one-way receipt consumption. |
+| `wf_sessions` | Current planning snapshots in a namespace separate from PM sessions. |
+| `wf_turns` | Append-only accepted planning choices and snapshot versions. |
+| `wf_approvals` | Exact per-document planning receipts, kinds, expiry and consumption. |
+| `wf_mandates` | Explicit human grants for dependency-only Workflow replans. |
 
 Each connection enables foreign keys. The application marker `0x4E554B59` and
-SQLite `user_version = 2` identify the current database schema. Initialization is an
-atomic version 0-to-2 migration for an empty database. Incompatible, foreign and
+SQLite `user_version = 3` identify the current database schema. Initialization is an
+atomic version 0-to-3 migration for an empty database. Incompatible, foreign and
 corrupt stores fail without being rebuilt. The database schema version is
 independent of the JSON wire version `1.0`.
 Phase 1.1 preserved SQLite version 1 during the naming migration. Phase 2 adds
 operational tables with a versioned forward migration, keeping contract wire
 version `1.0`, existing table meanings and published document bytes.
+
+Checkpoint 3.0.A–D adds only planning and publication authority state. A verified
+version 2 store is backed up to a unique `state.pre-v3-*.db` before the four new
+tables and their immutable-history triggers commit transactionally. PM sessions,
+turns, receipts and all existing contract rows retain their bytes and meanings.
+Failure rolls back to v2 with the completed backup retained. Version 1 stores
+retain their pre-v2 backup and upgrade through both migrations in the same
+bounded transaction. Fresh stores require no pre-upgrade backup. The verified
+Phase 2 package itself creates the v2 regression fixture used by migration tests.
+
+The generic CAS/append-only turn mechanics are shared with PM persistence.
+Workflow-specific table names are fixed internal constants. PM listing and
+validation continue to see only PM sessions. Execution scheduling, attempt
+leases and general external-process recovery are later checkpoint work.
 
 ## Upgrading a version 1 store
 
@@ -85,6 +103,32 @@ New validation runs have separate contract identities. Result, report and reques
 records preserve historical snapshots.
 
 ## Artifacts and trust boundaries
+
+Planning review freezes an explicit set of complete TDC, Module and Workflow
+documents. One foreground-terminal action approves that exact set, with a
+separate digest-bound receipt for every actual Kernel publication. Reused
+published references are displayed alongside changed candidates. Approval of an
+earlier technology choice does not authorize a later interface. Consolidation
+uses the exact receipts already obtained without asking for another global
+approval. Declined, stale, replayed, mutated or expired reviews authorize no
+remaining publication.
+
+Documents publish in dependency order. If a process is interrupted, recovery
+holds a writer reservation, verifies each committed exact document and receipt,
+preserves actual partial publication and revokes uncertain remaining consent.
+A fresh review reuses those known committed references rather than duplicating
+history. A concurrent read can revoke still-live pending consent in the brief
+publication interval, requiring review again. The Kernel remains the only
+contract writer and controls all exact predecessor and active-reference checks.
+
+The optional `DELEGATE` terminal choice records a 24-hour mandate for the same
+local account. It permits only Workflow checkpoint dependency changes while
+preserving every other payload field and exact Project/Module/TDC reference.
+The mandate must refer to a completed human-authorized Workflow publication and
+its real consumed receipt. A delegated successor has `DELEGATED` provenance and
+its own exact receipt. Changed interfaces, technologies, milestones, obligations
+or expired mandates require the applicable human action. The full planning
+review and the mandate ID remain visible in session history.
 
 Evidence is read from `.corinthos/artifacts/` using a portable relative path with
 slash separators. Paths with traversal, Windows devices, symlinks, junctions,
@@ -147,9 +191,9 @@ Keep it offline while using the verified target. On failure, preserve the
 original and resolve the reported issue before retrying. The library migrates
 only the supplied root. Opening `ContractStore` does not start a migration.
 
-This directory migration verifies version 1 and version 2 databases without
+This directory migration verifies version 1, version 2 and version 3 databases without
 upgrading them during the byte comparison. Opening the verified target with the
-current Kernel then performs the independent v1-to-v2 upgrade above. Repeating
+current Kernel then performs the independent forward schema upgrade above. Repeating
 the naming migration before target changes is a no-op. Once the target is
 upgraded or otherwise evolves, its differing bytes are treated as a conflict
 and preserved. Continue using the verified current target.

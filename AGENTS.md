@@ -71,8 +71,20 @@ and independent product validation. Escape untrusted controls in terminal review
 and retain all fields and stable IDs. Revisions require current exact bases,
 explicit human approval and preservation of unaffected obligations. Verify
 restart, stale sessions, receipt invalidation and failed publication recovery.
-Workflow, real Codex/Claude adapters, Validation, Report and Phase 3 require
-subsequent execution orders from the project owner.
+Phase 3.0 is authorized through construction checkpoints A–D. Use the
+[Workflow planning guide](docs/workflow-planning.md) for the separate planning
+service, exact final-set review and publication. Preserve provider-owned
+interfaces, exact consumer revisions, blocking obligation coverage and M1–M5.
+Use real per-document HUMAN receipts for reserved choices. DELEGATED publication
+requires a verified recorded mandate and its exact bounds. An existing mandate
+ID is a reference to authority that must be checked, never consent by itself.
+
+Keep Adapter Manager provider capabilities and live evidence honest. Follow the
+[adapter guide](docs/adapters.md) and preserve equivalent mandatory Standard
+instructions. An agent result carries no human approval or independent Validation
+authority. Stop after A–D. Scheduler/execution work, general execution recovery,
+impact propagation, the pilot and release/PR checkpoints E–J require subsequent
+authorization. Validation and Report remain later phases.
 
 Treat `urn:nukytera:contracts:1.0:*`, `nukytera-standard` and SQLite application
 ID `0x4E554B59` as durable identifiers. Keep the original document bytes,
@@ -101,6 +113,7 @@ python -m ruff check .
 python -m ruff format --check .
 python examples/contract_kernel.py
 python -m corinthos project --help
+python -m corinthos workflow --help
 ```
 
 Verify imports and CLI behavior, valid Standard loading, and rejection of invalid,
@@ -125,6 +138,7 @@ Preserve the complete, unmodified [LICENSE](LICENSE), appropriate source notices
 SPDX headers, and accurate packaging metadata. Respect existing copyright and
 third-party notices, and never invent copyright-holder names or ownership
 transfers. Record license-related decisions and keep licensing guidance consistent
-with the official license. Phase 2 changes belong on a reviewed feature branch
-and pull request. Merging into the default branch requires separate authorization.
+with the official license. Keep A–D changes reviewable on their dedicated branch.
+The current authorization stops before the later PR and release checkpoints.
+Merging into the default branch requires separate authorization.
 Preserve the historical `phase-1-baseline` tag and all existing commit history.

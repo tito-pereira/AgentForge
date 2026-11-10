@@ -151,10 +151,36 @@ changes to the affected obligations. User-initiated changes may open a revision
 session directly. Workflow execution and independent validation follow in their
 separately authorized phases.
 
+## Workflow planning publication flow
+
+The [planning service](workflow-planning.md) uses the existing Technology Decision,
+Module and Workflow schemas. Technology decisions link an evaluated human choice
+to planned module IDs and exact Project obligations. Module definitions preserve
+responsibility boundaries, source obligations, relevant exact TDCs, provider-owned
+interfaces and exact consumer references. Verification specifications retain
+blocking coverage for assigned requirements, constraints, interfaces and M1–M5.
+Workflow consolidation includes resolvable module/technology associations,
+checkpoint DAGs and optional cumulative milestone plans under the fixed policy.
+
+The service freezes all affected final candidates before authorization. The
+foreground terminal shows their entire content, canonical hashes and previous
+differences once. Exact per-document receipts bind the actual final set and
+support publication in dependency order. New binding technologies, interface
+terms and milestone architecture receive applicable HUMAN authorization. An
+existing bounded mandate can authorize a dependency-only Workflow revision with
+DELEGATED provenance. Changed binding content requires renewed human review.
+
+Published unchanged sources are reused by exact reference. The Kernel remains
+the only publication authority, and historical documents retain their identities
+and bytes. A partial multi-document publication preserves already committed
+facts and requires renewed review for unfinished work. Runtime scheduling,
+execution and general revision-impact propagation require later checkpoints.
+
 ## Related documentation
 
 - [Architecture and Engine responsibilities](architecture.md)
 - [Project Manager negotiation and approval](project-manager.md)
+- [Workflow planning and exact set authorization](workflow-planning.md)
 - [Workflow boundaries and review rules](workflows.md)
 - [SQLite storage and recovery](storage.md)
 - [Design and acceptance traceability](contract-kernel-design.md)
