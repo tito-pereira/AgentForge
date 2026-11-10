@@ -76,11 +76,31 @@ sandbox and formal independent Validation.
 
 ## Pilot and later authority
 
-The selected task-manager brief and its concrete Project draft are prepared in a
-separate permanent local repository. Its real Project Contract and complete
-technical/interface plan still require the owner's foreground-terminal actions.
-Pilot dispatch, implementation, installation and daily-data acceptance checks are
-therefore **pending**. No test fixture or diagnostic substitutes for them.
+The owner approved the frozen task-manager Project Contract and its separate
+technical/interface plan through two real foreground-terminal actions. The
+Kernel published the exact Project, Technology Decision, three Module and
+Workflow Contracts. Corinthos ran storage, task rules and CLI checkpoints using
+native Codex 0.167.0 in a separate permanent local repository.
+
+The first launch could not write the declared files. Corinthos blocked the
+attempt and confirmed process cleanup. A separate probe verified the Windows
+MXC workspace sandbox before an inspected linked retry. All ten storage tests
+passed before a deliberately injected verification-harness failure blocked
+progression. A fresh verification-only attempt reran those checks and completed
+after separate review. The CLI review caught a redirected Windows Unicode
+output defect. A linked native repair and a new regression test addressed it
+under the same contracts. All three checkpoints completed with real checks and
+separate preliminary technical review. The final pilot suite passed **20 tests**.
+
+Two clean offline builds of the reviewed pilot commit produced byte-identical
+wheels with zero third-party runtime dependencies. The wheel installed into a
+dedicated per-user Windows CPython 3.12.10 runtime. The installed `tasks.exe`
+passed **31 calls** across isolated databases and different working directories,
+including Unicode, invalid input without unintended writes, backup, restore,
+overwrite refusal and persistence through reinstall. The real daily database
+was initialized empty and its stable per-user path and SQLite integrity were
+verified separately. The private handoff retains exact contracts, attempts,
+source and wheel hashes, test evidence and owner launch instructions.
 
 Formal Validation and Report Engines, product acceptance, Phase 4 and integration
 into main remain outside this engineering verification record. Required formal
