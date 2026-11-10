@@ -6,6 +6,8 @@ import sqlite3
 import stat
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from copy import deepcopy
 from pathlib import Path
 from zipfile import ZipFile
@@ -23,6 +25,7 @@ from corinthos.contracts import (
     approval_request,
     migration,
 )
+from corinthos.contracts import store as storage
 
 BASELINE = "e058f4b96454dba44e5b31387c37061b75cec662"
 LEGACY_SETUP = """
@@ -97,6 +100,145 @@ def original_state(tmp_path_factory):
 @pytest.fixture
 def legacy(tmp_path, original_state):
     return shutil.copytree(original_state, tmp_path / ".nukytera")
+
+
+def _contract_records(database):
+    with closing(sqlite3.connect(database)) as connection:
+        return {
+            table: connection.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall()
+            for table in ("contracts", "revisions", "contract_references", "audit_events")
+        }
+
+
+def _database_version(database):
+    with closing(sqlite3.connect(database)) as connection:
+        return connection.execute("PRAGMA user_version").fetchone()[0]
+
+
+def test_v1_upgrade_preserves_all_contract_records_and_verified_backup(tmp_path, original_state):
+    private = shutil.copytree(original_state, tmp_path / ".corinthos")
+    database = private / "state.db"
+    before = _contract_records(database)
+    existing_backup = (private / "state.backup.db").read_bytes()
+    assert _database_version(database) == 1
+
+    store = ContractStore(tmp_path)
+
+    assert _database_version(database) == 2
+    assert _contract_records(database) == before
+    backups = list(private.glob("state.pre-v2-*.db"))
+    assert len(backups) == 1
+    assert _database_version(backups[0]) == 1
+    assert _contract_records(backups[0]) == before
+    assert (private / "state.backup.db").read_bytes() == existing_backup
+    assert len(store.list_events()) == 9
+    result = store.list_revisions("demo-result")[0]
+    evidence = result["payload"]["evidence_refs"][0]
+    store.verify_artifact(evidence["path"], evidence["sha256"])
+    assert ContractStore(tmp_path).list_events() == store.list_events()
+    assert list(private.glob("state.pre-v2-*.db")) == backups
+
+
+def test_failed_v2_upgrade_rolls_back_to_v1_and_retains_backup(
+    tmp_path, original_state, monkeypatch
+):
+    private = shutil.copytree(original_state, tmp_path / ".corinthos")
+    database = private / "state.db"
+    before = _contract_records(database)
+    with monkeypatch.context() as patch:
+        patch.setattr(storage, "_MIGRATION_V2", (*storage._MIGRATION_V2, "INVALID SQL"))
+        with pytest.raises(StoreError, match="database operation failed"):
+            ContractStore(tmp_path)
+    assert _database_version(database) == 1
+    assert _contract_records(database) == before
+    with closing(sqlite3.connect(database)) as connection:
+        assert (
+            connection.execute("SELECT name FROM sqlite_schema WHERE name LIKE 'pm_%'").fetchall()
+            == []
+        )
+    backup = next(private.glob("state.pre-v2-*.db"))
+    assert _contract_records(backup) == before
+    assert ContractStore(tmp_path).list_events()
+    assert _database_version(database) == 2
+    assert backup.exists()
+
+
+def test_failed_preupgrade_backup_publishes_no_schema_changes(
+    tmp_path, original_state, monkeypatch
+):
+    private = shutil.copytree(original_state, tmp_path / ".corinthos")
+    database = private / "state.db"
+    before = database.read_bytes()
+
+    def unavailable(*args, **kwargs):
+        raise StoreError("The pre-upgrade backup failed.")
+
+    monkeypatch.setattr(ContractStore, "_copy_backup", unavailable)
+    with pytest.raises(StoreError, match="backup failed"):
+        ContractStore(tmp_path)
+    assert database.read_bytes() == before
+    assert _database_version(database) == 1
+    assert not list(private.glob("state.pre-v2-*.db"))
+
+
+def test_readonly_v1_database_cannot_be_upgraded(tmp_path, original_state):
+    private = shutil.copytree(original_state, tmp_path / ".corinthos")
+    database = private / "state.db"
+    before = database.read_bytes()
+    mode = database.stat().st_mode
+    database.chmod(mode & ~stat.S_IWUSR)
+    try:
+        with pytest.raises(StoreError, match="read-only"):
+            ContractStore(tmp_path)
+        assert database.read_bytes() == before
+        assert not list(private.glob("state.pre-v2-*.db"))
+    finally:
+        database.chmod(mode)
+
+
+def test_concurrent_openers_upgrade_v1_once(tmp_path, original_state):
+    private = shutil.copytree(original_state, tmp_path / ".corinthos")
+    before = _contract_records(private / "state.db")
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        stores = list(executor.map(lambda _: ContractStore(tmp_path), range(2)))
+    assert all(len(store.list_events()) == 9 for store in stores)
+    assert len(list(private.glob("state.pre-v2-*.db"))) == 1
+    assert _contract_records(private / "state.db") == before
+
+
+def test_fresh_v2_store_needs_no_preupgrade_backup(tmp_path):
+    store = ContractStore(tmp_path)
+    assert _database_version(store.database_path) == 2
+    assert not list(store.database_path.parent.glob("state.pre-v2-*.db"))
+
+
+def test_legacy_copy_stays_v1_until_explicit_open_upgrades_it(legacy):
+    original = (legacy / "state.db").read_bytes()
+    assert migration.migrate_legacy_state(legacy.parent)
+    target = legacy.parent / ".corinthos" / "state.db"
+    assert target.read_bytes() == original
+    assert _database_version(target) == 1
+    assert not migration.migrate_legacy_state(legacy.parent)
+    assert len(ContractStore(legacy.parent).list_events()) == 9
+    assert _database_version(target) == 2
+    assert (legacy / "state.db").read_bytes() == original
+
+
+def test_files_only_migration_also_preserves_an_existing_v2_store(tmp_path):
+    store = ContractStore(tmp_path)
+    with store._transaction() as connection:
+        connection.execute(
+            "INSERT INTO pm_sessions VALUES (?, ?, ?, ?)",
+            ("test-session", "test-project", 1, '{"state":"DRAFT"}'),
+        )
+    private = store.database_path.parent
+    legacy = private.with_name(".nukytera")
+    private.rename(legacy)
+    original = (legacy / "state.db").read_bytes()
+    assert migration.migrate_legacy_state(tmp_path)
+    assert (private / "state.db").read_bytes() == original
+    assert (legacy / "state.db").read_bytes() == original
+    assert not migration.migrate_legacy_state(tmp_path)
 
 
 def test_old_store_migration_preserves_database_and_evidence(legacy):
