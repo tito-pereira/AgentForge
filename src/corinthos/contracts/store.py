@@ -28,7 +28,7 @@ from .schema import validate_schema
 from .semantics import validate_semantics
 
 _APPLICATION_ID = 0x4E554B59
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 _LOCK_TIMEOUT = 5.0
 _BUSY_CODES = {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
 _ACTIVE_TYPES = frozenset({"PROJECT", "WORKFLOW", "MODULE", "TECHNOLOGY_DECISION", "VALIDATION"})
@@ -212,9 +212,86 @@ _MIGRATION_V3 = (
        WHEN EXISTS (SELECT 1 FROM wf_mandates WHERE mandate_id = NEW.mandate_id)
        BEGIN SELECT RAISE(ABORT, 'Planning mandates are immutable'); END""",
 )
+_MIGRATION_V4 = (
+    """CREATE TABLE wf_executions (
+        execution_id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL,
+        workflow_ref TEXT NOT NULL,
+        workspace TEXT NOT NULL,
+        bindings TEXT NOT NULL,
+        bindings_sha256 TEXT NOT NULL,
+        version INTEGER NOT NULL CHECK (version >= 1),
+        state TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE wf_checkpoints (
+        execution_id TEXT NOT NULL REFERENCES wf_executions (execution_id),
+        checkpoint_id TEXT NOT NULL,
+        state TEXT NOT NULL,
+        attempt_id TEXT REFERENCES wf_attempts (attempt_id),
+        inherited_from TEXT,
+        PRIMARY KEY (execution_id, checkpoint_id)
+    )""",
+    """CREATE TABLE wf_attempts (
+        attempt_id TEXT PRIMARY KEY NOT NULL,
+        execution_id TEXT NOT NULL,
+        checkpoint_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        fence INTEGER NOT NULL CHECK (fence >= 1),
+        provider TEXT NOT NULL,
+        state TEXT NOT NULL,
+        context TEXT NOT NULL,
+        details TEXT NOT NULL,
+        previous_attempt_id TEXT REFERENCES wf_attempts (attempt_id),
+        execution_version INTEGER NOT NULL CHECK (execution_version >= 1),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (execution_id, checkpoint_id)
+            REFERENCES wf_checkpoints (execution_id, checkpoint_id)
+    )""",
+    """CREATE TABLE wf_workspace_leases (
+        workspace TEXT PRIMARY KEY NOT NULL,
+        execution_id TEXT NOT NULL REFERENCES wf_executions (execution_id),
+        attempt_id TEXT UNIQUE REFERENCES wf_attempts (attempt_id),
+        owner_id TEXT,
+        fence INTEGER NOT NULL DEFAULT 0 CHECK (fence >= 0),
+        expires_at REAL NOT NULL DEFAULT 0
+    )""",
+    """CREATE TABLE wf_execution_events (
+        sequence INTEGER PRIMARY KEY,
+        event_id TEXT NOT NULL UNIQUE,
+        execution_id TEXT NOT NULL REFERENCES wf_executions (execution_id),
+        checkpoint_id TEXT,
+        attempt_id TEXT REFERENCES wf_attempts (attempt_id),
+        actor_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        data TEXT NOT NULL,
+        occurred_at TEXT NOT NULL
+    )""",
+    """CREATE TRIGGER wf_execution_events_no_update BEFORE UPDATE ON wf_execution_events
+       BEGIN SELECT RAISE(ABORT, 'Execution observations are append-only'); END""",
+    """CREATE TRIGGER wf_execution_events_no_delete BEFORE DELETE ON wf_execution_events
+       BEGIN SELECT RAISE(ABORT, 'Execution observations are append-only'); END""",
+    """CREATE TRIGGER wf_execution_events_no_replace BEFORE INSERT ON wf_execution_events
+       WHEN EXISTS (SELECT 1 FROM wf_execution_events
+                    WHERE sequence = NEW.sequence OR event_id = NEW.event_id)
+       BEGIN SELECT RAISE(ABORT, 'Execution observations are append-only'); END""",
+)
 _REQUIRED_TABLES_V1 = frozenset({"contracts", "revisions", "contract_references", "audit_events"})
 _REQUIRED_TABLES_V2 = _REQUIRED_TABLES_V1 | {"pm_sessions", "pm_turns", "pm_approvals"}
-_REQUIRED_TABLES = _REQUIRED_TABLES_V2 | {"wf_sessions", "wf_turns", "wf_approvals", "wf_mandates"}
+_REQUIRED_TABLES_V3 = _REQUIRED_TABLES_V2 | {
+    "wf_sessions",
+    "wf_turns",
+    "wf_approvals",
+    "wf_mandates",
+}
+_REQUIRED_TABLES = _REQUIRED_TABLES_V3 | {
+    "wf_executions",
+    "wf_checkpoints",
+    "wf_attempts",
+    "wf_workspace_leases",
+    "wf_execution_events",
+}
 _REVISIONS = """SELECT revisions.*, contracts.contract_type, contracts.project_id,
                 contracts.active_revision_id
                 FROM revisions JOIN contracts USING (contract_id)"""
@@ -233,12 +310,20 @@ def _markers(connection: sqlite3.Connection) -> tuple[int, int]:
 
 def _verify_database(connection: sqlite3.Connection, version: int) -> None:
     """Check a supported schema without upgrading or rewriting its records."""
-    if version not in (1, 2, _SCHEMA_VERSION) or _markers(connection) != (_APPLICATION_ID, version):
+    if version not in (1, 2, 3, _SCHEMA_VERSION) or _markers(connection) != (
+        _APPLICATION_ID,
+        version,
+    ):
         raise StoreError("The state database application or schema version is unsupported.")
     tables = {
         row[0] for row in connection.execute("SELECT name FROM sqlite_schema WHERE type = 'table'")
     }
-    required = {1: _REQUIRED_TABLES_V1, 2: _REQUIRED_TABLES_V2, 3: _REQUIRED_TABLES}[version]
+    required = {
+        1: _REQUIRED_TABLES_V1,
+        2: _REQUIRED_TABLES_V2,
+        3: _REQUIRED_TABLES_V3,
+        4: _REQUIRED_TABLES,
+    }[version]
     if not required <= tables:
         raise StoreError("The state database schema is incomplete.")
     if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
@@ -356,7 +441,7 @@ class ContractStore:
 
     def _migrate(self, connection: sqlite3.Connection) -> None:
         application, version = _markers(connection)
-        if application == _APPLICATION_ID and version in (1, 2, _SCHEMA_VERSION):
+        if application == _APPLICATION_ID and version in (1, 2, 3, _SCHEMA_VERSION):
             _verify_database(connection, version)
             if version == _SCHEMA_VERSION:
                 return
@@ -383,7 +468,10 @@ class ContractStore:
         if version < 2:
             for statement in _MIGRATION_V2:
                 connection.execute(statement)
-        for statement in _MIGRATION_V3:
+        if version < 3:
+            for statement in _MIGRATION_V3:
+                connection.execute(statement)
+        for statement in _MIGRATION_V4:
             connection.execute(statement)
         connection.execute(f"PRAGMA application_id = {_APPLICATION_ID}")
         connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
