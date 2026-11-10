@@ -161,21 +161,18 @@ published Validation Result. User-initiated global changes use the existing
 Project Manager revision flow directly. Requests and failures supply no approval
 to change product obligations.
 
-The selected pilot brief defines task rules, SQLite persistence and a terminal
-interface with dependent checkpoints. Its concrete contracts currently await
-real owner-terminal approvals. Pilot implementation and installation are pending.
-Actual Codex pilot execution, installed-application verification and delivery
-evidence must be recorded after they occur. The earlier live Codex evidence
-remains a read-only adapter diagnostic.
+Two real foreground-terminal approvals covered the frozen task-manager Project
+Contract and its separate technical/interface plan. The Kernel published the
+Project, Technology Decision and Workflow Contracts and three Module Contracts.
+Corinthos completed the storage, task rules and CLI checkpoints using native
+Codex for implementation. The evidence includes inspected recovery with
+verification only and an independently reviewed Unicode repair. The earlier
+read-only Codex diagnostic remains separate evidence.
 
-The planned installation checks use isolated demonstration data and cover
-backup/restore, reinstallation and working-directory independence. Daily data
-remains private. Later formal Validation/Report gates must be reported separately
-from a functional installed application and explicit preliminary technical
-review. Claude's executable is absent, so live Claude verification remains
-`NOT VERIFIED`.
-
-The [Phase 3 verification record](phase-3-verification.md) identifies the current
-installed-wheel environment, artifact digest, native diagnostic and remaining
-pilot requirements. It preserves the distinction from the historical A–D
-evidence above.
+The pilot was installed for Windows use. Verification with isolated data covered
+20 automated tests and 31 installed CLI calls, including backup, restore,
+overwrite refusal, working-directory independence and persistence through
+reinstall. The [Phase 3 verification record](phase-3-verification.md) records the
+pilot evidence, installed-wheel results and native diagnostic. Live Claude
+remains `NOT VERIFIED` because the native executable was unavailable. Formal
+Validation, Report and human product acceptance retain their separate scopes.

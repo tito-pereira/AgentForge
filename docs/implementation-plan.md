@@ -162,8 +162,10 @@ preserves the A–D handoff and defines continuation boundaries. Pilot delivery
 must identify real source/package/launcher/data paths, preserve daily tasks
 across reinstall, and verify backup/restore using separate test data. Actual
 execution and release evidence are recorded only when observed. The
-[Phase 3 verification record](phase-3-verification.md) identifies the current
-installed-wheel results, native diagnostic and outstanding pilot approvals.
+[Phase 3 verification record](phase-3-verification.md) records the completed
+Codex pilot, Windows installation and isolated checks alongside the Core
+installed-wheel results. Live Claude remains `NOT VERIFIED`. Formal Validation,
+Report and human product acceptance retain their separate scopes.
 
 ## Gates and the next phase
 
