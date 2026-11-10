@@ -6,7 +6,7 @@ private. Keep `.corinthos/`, backups, journals, and the legacy `.nukytera/`
 and `.agentforge/` directories out of Git. The library uses normal OS
 permissions and parameterized SQL.
 
-## SQLite version 1
+## SQLite version 2
 
 | Table | Contents |
 | --- | --- |
@@ -14,14 +14,66 @@ permissions and parameterized SQL.
 | `revisions` | Canonical document and SHA-256, exact identity, content version and predecessor. |
 | `contract_references` | Exact revision-to-revision dependency edges. |
 | `audit_events` | Ordered publication events and activation facts, with provenance in the referenced revision. |
+| `pm_sessions` | Current negotiation snapshot and optimistic session version. |
+| `pm_turns` | Append-only accepted actions, actor labels and complete session snapshots. |
+| `pm_approvals` | Exact local review bindings, expiry and one-way receipt consumption. |
 
 Each connection enables foreign keys. The application marker `0x4E554B59` and
-SQLite `user_version = 1` identify the database schema. Initialization is an
-atomic version 0-to-1 migration for an empty database. Incompatible, foreign and
+SQLite `user_version = 2` identify the current database schema. Initialization is an
+atomic version 0-to-2 migration for an empty database. Incompatible, foreign and
 corrupt stores fail without being rebuilt. The database schema version is
 independent of the JSON wire version `1.0`.
-Phase 1.1 keeps the application marker, schema version and table meanings when
-the state directory changes.
+Phase 1.1 preserved SQLite version 1 during the naming migration. Phase 2 adds
+operational tables with a versioned forward migration, keeping contract wire
+version `1.0`, existing table meanings and published document bytes.
+
+## Upgrading a version 1 store
+
+Opening a verified version 1 store takes an immediate write reservation, checks
+SQLite and foreign-key integrity, and creates a consistent private
+`state.pre-v2-<unique-id>.db` backup. The backup uses a separate read connection
+while the write reservation prevents concurrent changes. Its integrity and
+version markers are checked before publication at an unused filename.
+
+The new tables, append-only turn triggers, immutable receipt bindings and SQLite
+version 2 marker commit together. An interrupted or failed upgrade rolls back
+the schema transaction and retains any completed backup. Existing contract
+documents, digests, references, active pointers and audit rows are preserved.
+Read-only, corrupt, incompatible and unsupported future-version stores fail
+without reset. Retain the pre-upgrade backup for recovery with the earlier
+release. Restoring that backup deliberately returns to its recorded state and
+requires stopping all writers first.
+
+## Negotiation and approval transactions
+
+Every accepted edit updates its session with a compare-and-swap version and
+appends a uniquely identified turn in the same transaction. Stale versions fail
+and must be reloaded. A session snapshot is limited to 1 MiB. Arbitrary partial
+keystrokes and model conversation streams are outside this storage API.
+
+An exact review freezes the final document, including its approval metadata,
+revision and creation time, before hashing and display. The terminal bridge
+requires a distinct random confirmation phrase on the foreground OS terminal.
+Piped input and assistant text cannot provide that terminal action. Actor IDs
+encode the local account label. This local boundary trusts the OS account and
+the Python process, and provides no remote identity authentication.
+
+Publication uses three bounded transactions. First, the approved session version
+and exact receipt are committed as `PUBLISHING`. Second, the real Contract Kernel
+publishes the immutable document with a verifier bound to that receipt and hash.
+Third, receipt consumption and the `PUBLISHED` snapshot commit together.
+
+On restart, recovery reserves the writer before inspecting publication. An exact
+committed revision and matching receipt finish the session without republishing.
+An absent revision revokes the interrupted approval and requires another review.
+The writer reservation orders recovery against an in-flight Kernel transaction.
+An expired, consumed, stale or differently bound receipt fails verification.
+An edit invalidates a prepared review. Contract predecessor checks also reject
+publication after another session advances the active Project revision.
+A concurrent session read in the brief interval before Kernel publication can
+revoke the pending receipt as interrupted. That safe conflict requires a renewed
+review. A process lease that distinguishes a live approver from a crashed one
+is a possible future refinement.
 
 Publication starts an immediate transaction and resolves references within the
 transaction. The publisher supplies the exact predecessor. The store compares it
@@ -94,6 +146,13 @@ stays at `.nukytera/` for recovery.
 Keep it offline while using the verified target. On failure, preserve the
 original and resolve the reported issue before retrying. The library migrates
 only the supplied root. Opening `ContractStore` does not start a migration.
+
+This directory migration verifies version 1 and version 2 databases without
+upgrading them during the byte comparison. Opening the verified target with the
+current Kernel then performs the independent v1-to-v2 upgrade above. Repeating
+the naming migration before target changes is a no-op. Once the target is
+upgraded or otherwise evolves, its differing bytes are treated as a conflict
+and preserved. Continue using the verified current target.
 
 ## Backup and recovery
 

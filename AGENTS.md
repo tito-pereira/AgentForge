@@ -1,7 +1,7 @@
 # Agent instructions
 
-This repository contains the Corinthos Core foundation and Contract Kernel,
-package version `0.1.0`.
+This repository contains the Corinthos Core foundation, Contract Kernel and
+Project Manager, package version `0.1.0`.
 The product target is Core v0.1, based on product specification revision v0.2.
 Phase 0 established the foundation. Phase 0.1 covers the English-language migration,
 publication review, verification, and first public GitHub publication when authorized.
@@ -58,8 +58,21 @@ Phase 1 implements eight contract schemas, exact references, authority checks,
 immutable revisions and local SQLite persistence as shared infrastructure. Use
 the documented [kernel API](docs/contracts.md) and [storage rules](docs/storage.md).
 Verify human and delegated approval through the trusted caller boundary. Preserve
-historical references when an active revision changes. Full Engines and Phase 2
-require subsequent execution orders from the project owner.
+historical references when an active revision changes. Phase 2 implements the
+[Project Manager](docs/project-manager.md) with a thin terminal adapter, persistent
+human-led negotiation and exact local approval. Keep session/proposal history in
+operational SQLite state and published revisions behind the Contract Kernel API.
+The approval bridge opens the foreground OS terminal and verifies its exact
+random challenge against a frozen candidate. Piped input, synthetic test consent,
+assistant text and a stored claim cannot supply production approval.
+
+Maintain the distinction between structural checks, supplied feasibility evidence
+and independent product validation. Escape untrusted controls in terminal reviews
+and retain all fields and stable IDs. Revisions require current exact bases,
+explicit human approval and preservation of unaffected obligations. Verify
+restart, stale sessions, receipt invalidation and failed publication recovery.
+Workflow, real Codex/Claude adapters, Validation, Report and Phase 3 require
+subsequent execution orders from the project owner.
 
 Treat `urn:nukytera:contracts:1.0:*`, `nukytera-standard` and SQLite application
 ID `0x4E554B59` as durable identifiers. Keep the original document bytes,
@@ -87,6 +100,7 @@ python -m pytest
 python -m ruff check .
 python -m ruff format --check .
 python examples/contract_kernel.py
+python -m corinthos project --help
 ```
 
 Verify imports and CLI behavior, valid Standard loading, and rejection of invalid,
@@ -111,6 +125,6 @@ Preserve the complete, unmodified [LICENSE](LICENSE), appropriate source notices
 SPDX headers, and accurate packaging metadata. Respect existing copyright and
 third-party notices, and never invent copyright-holder names or ownership
 transfers. Record license-related decisions and keep licensing guidance consistent
-with the official license. Phase 1.1 changes belong on a reviewed feature branch
+with the official license. Phase 2 changes belong on a reviewed feature branch
 and pull request. Merging into the default branch requires separate authorization.
 Preserve the historical `phase-1-baseline` tag and all existing commit history.

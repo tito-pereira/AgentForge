@@ -127,9 +127,34 @@ interface decisions. The historical delegation used to finalize contract types
 6–8 applied to their conceptual specification. It granted no standing authority
 to approve later project changes.
 
+## Project Manager publication flow
+
+The [Project Manager](project-manager.md) collects vision, included/excluded
+scope, assumptions, risks, requirements and acceptance criteria, constraints,
+success criteria, classified structural proposals and negotiated decisions through
+guided questions. Stable IDs and operational decisions survive interruption.
+The canonical Project wire shape remains the eight-type Kernel's existing
+`metadata`/`payload` schema. Session versions and rejected alternatives belong to
+operational state.
+
+The service freezes a complete `PUBLISHED` candidate with its final approval
+metadata, exact predecessor and canonical digest. The foreground terminal shows
+all fields and differences and asks for a fresh random approval challenge. Its
+local receipt binds the exact document, actor, session and expiry. The trusted
+callback supplies that proof to `ContractStore.publish`; the Kernel validates
+shape, authority, references and lineage as usual. Edits and conflicts require
+new review. An approved specification becomes an immutable Project revision.
+
+An unchanged negotiation, refusal, deferral or returned request creates no new
+Project revision. PRR intake starts from an exact active approved base and limits
+changes to the affected obligations. User-initiated changes may open a revision
+session directly. Workflow execution and independent validation follow in their
+separately authorized phases.
+
 ## Related documentation
 
 - [Architecture and Engine responsibilities](architecture.md)
+- [Project Manager negotiation and approval](project-manager.md)
 - [Workflow boundaries and review rules](workflows.md)
 - [SQLite storage and recovery](storage.md)
 - [Design and acceptance traceability](contract-kernel-design.md)

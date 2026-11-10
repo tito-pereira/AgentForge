@@ -5,8 +5,9 @@ instructions, explicit human decisions, versioned contracts, and independent
 verification. It aims to preserve engineering standards when working with
 different agents, initially Codex and Claude Code.
 
-The implementation includes the **Phase 0 foundation** and the **Phase 1 Contract
-Kernel**, with package version `0.1.0`. Phase 0 established English-language public
+The implementation includes the **Phase 0 foundation**, **Phase 1 Contract
+Kernel** and **Phase 2 Project Manager**, with package version `0.1.0`.
+Phase 0 established English-language public
 development, clean Windows and Linux environments and MPL 2.0.
 The product target remains Core v0.1, based on product specification revision v0.2.
 
@@ -27,10 +28,15 @@ Earlier names and execution evidence are recorded in [decisions](docs/decisions.
   immutable revisions, and transactional local SQLite storage.
 - Positive and negative tests, Ruff checks, and a GitHub Actions workflow.
 - Agent instructions and self-contained engineering documentation.
+- Guided project negotiation, persistent sessions, classified suggestions and
+  requirements, complete reviews, and explicit local terminal approval.
+- Bounded intake of published Project Revision Requests and immutable approved
+  Project revisions through the existing Kernel.
 
-The six Engines will use the same kernel. Project negotiation, execution adapters,
-workflow scheduling, independent validation runners, report generation and
-experimental builds belong to subsequent phases. The CLI displays help and version.
+The six Engines use the same kernel. Project Manager provides human-led structured
+negotiation. Execution adapters, workflow scheduling, independent validation
+runners, report generation and experimental builds belong to subsequent phases.
+Natural-language consistency and technical feasibility require human review.
 
 ## Five Engineering Commandments
 
@@ -118,6 +124,48 @@ Linux and Windows. Clean-venv verification must identify the exact commit and
 environment used. Prior CI results from the runner's global Python do not establish
 the clean-venv result.
 
+## Create your first project specification
+
+After installation, run this from the checkout in PowerShell.
+
+```powershell
+.\.venv\Scripts\corinthos.exe project --root . start
+```
+
+For POSIX, run `.venv/bin/corinthos project --root . start`. You can select another
+existing project directory with `--root`. Corinthos saves accepted answers
+privately beneath that directory.
+
+Describe your idea in your own words, for example, "Build a local greeting for
+a supplied name." In the numbered menu, add included scope, a requirement and
+its observable acceptance criterion, then a project success criterion. For
+example, the requirement can be "Print a greeting for the supplied name" and its
+criterion "Input Ada produces Hello, Ada."
+
+Use the menu to record constraints, exclusions, assumptions and risks. Classify
+each proposal as a negotiable **SUGGESTION** or binding **REQUIREMENT**, choose its
+related numbered obligations, and record your decision and reason. **Show
+complete draft** displays missing information and all saved choices. **Review
+complete contract** shows every contract field, stable ID, review digest and
+any previous revision differences. **Save for later and leave** preserves the
+session. Resume it through the same venv executable.
+
+```powershell
+.\.venv\Scripts\corinthos.exe project --root . resume
+```
+
+When ready, choose **Approve at the local terminal**. Read the complete fresh
+review and type its exact random `APPROVE` challenge to publish that specification.
+Other answers defer publication. Approval requires a foreground local terminal.
+Piped scripts can prepare drafts but cannot provide production approval. The
+published Project Contract describes what should be built, while execution and
+independent validation belong to later Engines. Feasibility and natural-language
+consistency remain explicit human review responsibilities.
+
+The [Project Manager guide](docs/project-manager.md) covers every command,
+negotiation states, exact approval, recovery, revision requests and the Python API.
+Use `corinthos project --help` to inspect the command list.
+
 ## Standard validation
 
 `policies/standard.yaml` declares M1–M5. `schemas/standard.schema.json` requires
@@ -158,12 +206,13 @@ exercise the API without certifying a product. See the
 
 | Path | Purpose |
 | --- | --- |
-| `src/corinthos/` | Package version, minimal CLI, Standard loader and Contract Kernel. |
+| `src/corinthos/` | Package version, CLI, Standard loader and Contract Kernel. |
 | `src/corinthos/contracts/schemas/` | Eight executable schemas and shared definitions, installed with the package. |
+| `src/corinthos/project_manager/` | Negotiation service, persistent sessions, complete reviews and local terminal approval. |
 | `examples/` | Eight sample contracts and the executable kernel demonstration. |
 | `policies/` | Versioned Standard policy. |
 | `schemas/` | Structural schema for the initial Standard. |
-| `tests/` | CLI, package, policy, contract integrity, authority and persistence checks. |
+| `tests/` | CLI, package, policy, contracts, negotiation, approval and persistence checks. |
 | `AGENTS.md`, `CLAUDE.md` | Equivalent agent obligations and human authority. |
 | `docs/` | Architecture, contract catalog, workflows, roadmap, and decisions. |
 | `.github/workflows/ci.yml` | Installation, CLI, lint, formatting, and test workflow. |
@@ -189,13 +238,14 @@ Review staged content before committing.
 | 6 — Evolution + Hardening | Product evolution, isolated builds, feedback, recovery, and robustness. |
 
 These are construction phases. Each requires bounded tasks, tests, documentation,
-and review. Phase 1.1 uses a reviewed migration pull request. The project
-owner authorizes its integration and the start of Phase 2 separately.
+and review. Phase 2 changes use a reviewed feature pull request. The project
+owner authorizes its integration and the start of Phase 3 separately.
 
 ## Engineering documentation
 
 - [Architecture and six Engines](docs/architecture.md)
 - [Eight contract types](docs/contracts.md)
+- [Project Manager tutorial, approval and service API](docs/project-manager.md)
 - [SQLite storage and recovery](docs/storage.md)
 - [Workflows, gates, and authority](docs/workflows.md)
 - [Implementation plan and acceptance criteria](docs/implementation-plan.md)
