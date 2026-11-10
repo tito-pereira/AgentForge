@@ -1,15 +1,15 @@
 # Agent instructions
 
-This repository contains the Nukytera Core foundation and Contract Kernel,
+This repository contains the Corinthos Core foundation and Contract Kernel,
 package version `0.1.0`.
 The product target is Core v0.1, based on product specification revision v0.2.
 Phase 0 established the foundation. Phase 0.1 covers the English-language migration,
 publication review, verification, and first public GitHub publication when authorized.
 Phase 0.2 verifies clean virtual environments on Windows and Linux and implements
 the project owner's approved MPL-2.0 license on a reviewed branch.
-Phase 0.3 is the authorized naming migration to Nukytera, `nukytera-core`, the
-`nukytera` package/CLI, and `.nukytera/` private state. Keep version `0.1.0`, the
-five Commandments, six Engines, eight contract types, and MPL-2.0 unchanged.
+Phase 1.1 migrates the package and CLI to `corinthos`, the distribution to
+`corinthos-core`, and private state to `.corinthos/`. Preserve version
+`0.1.0`, the five Commandments, six Engines, eight contract types, and MPL-2.0.
 
 ## Five mandatory Engineering Commandments
 
@@ -52,7 +52,7 @@ owner's preferred language.
 
 Inspect files, applicable instructions, and Git status before editing. Preserve
 existing work and operate only in the authorized directory. Follow the
-`src/nukytera/` layout and reuse the current implementation where appropriate.
+`src/corinthos/` layout and reuse the current implementation where appropriate.
 
 Phase 1 implements eight contract schemas, exact references, authority checks,
 immutable revisions and local SQLite persistence as shared infrastructure. Use
@@ -61,8 +61,14 @@ Verify human and delegated approval through the trusted caller boundary. Preserv
 historical references when an active revision changes. Full Engines and Phase 2
 require subsequent execution orders from the project owner.
 
+Treat `urn:nukytera:contracts:1.0:*`, `nukytera-standard` and SQLite application
+ID `0x4E554B59` as durable identifiers. Keep the original document bytes,
+approval receipts, evidence hashes and event order when migrating state.
+Follow the [storage migration procedure](docs/storage.md#migrating-existing-project-state)
+for each authorized project root.
+
 The initial validator is
-`nukytera.standard.load_standard(policy_path, schema_path)`. It accepts explicit
+`corinthos.standard.load_standard(policy_path, schema_path)`. It accepts explicit
 paths to `policies/standard.yaml` and `schemas/standard.schema.json`. These are
 checkout files. Practical implementation choices are recorded in
 [docs/decisions.md](docs/decisions.md).
@@ -75,8 +81,8 @@ Use a Python 3.12 virtual environment and run the relevant commands. The
 ```text
 python -m pip install -e ".[dev]"
 python -m pip check
-python -m nukytera --help
-python -m nukytera --version
+python -m corinthos --help
+python -m corinthos --version
 python -m pytest
 python -m ruff check .
 python -m ruff format --check .
@@ -93,7 +99,7 @@ local execution from observed remote CI. Mark blocked or unexecuted checks as
 **NOT VERIFIED**, with the cause. Technical review must evaluate evidence
 independently of the implementing agent's assertions.
 
-Protect credentials, logs, private data, and `.nukytera/`. Avoid destructive
+Protect credentials, logs, private data, and `.corinthos/`. Avoid destructive
 operations. Remote creation, pushes, publication, and external permission changes
 require authorization for the specific action. Before a public commit or push,
 inspect the complete staged snapshot, secret/private-data scan results, author
@@ -105,6 +111,6 @@ Preserve the complete, unmodified [LICENSE](LICENSE), appropriate source notices
 SPDX headers, and accurate packaging metadata. Respect existing copyright and
 third-party notices, and never invent copyright-holder names or ownership
 transfers. Record license-related decisions and keep licensing guidance consistent
-with the official license. Phase 1 changes belong on a reviewed feature branch
+with the official license. Phase 1.1 changes belong on a reviewed feature branch
 and pull request. Merging into the default branch requires separate authorization.
 Preserve the historical `phase-1-baseline` tag and all existing commit history.

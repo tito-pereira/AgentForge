@@ -5,7 +5,15 @@ from pathlib import Path
 import pytest
 
 
-@pytest.mark.parametrize("path", [".nukytera/private.json", ".agentforge/private.json"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".corinthos/private.json",
+        ".corinthos-migration-fixture/private.json",
+        ".nukytera/private.json",
+        ".agentforge/private.json",
+    ],
+)
 def test_private_state_is_ignored(path):
     result = subprocess.run(
         ["git", "check-ignore", "--no-index", "--quiet", "--", path],

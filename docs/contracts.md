@@ -42,10 +42,15 @@ within previously authorized delegation.
 
 ## Executable wire format
 
-The [packaged schemas](../src/nukytera/contracts/schemas) specify every nested
-property, required field and allowed value. They share an offline
-[`common.schema.json`](../src/nukytera/contracts/schemas/common.schema.json) registry.
+The [packaged schemas](../src/corinthos/contracts/schemas) specify every nested
+property, required field and allowed value. The offline registry resolves
+their shared [`common.schema.json`](../src/corinthos/contracts/schemas/common.schema.json) definitions.
 The [examples](../examples/contracts) provide one complete valid document per type.
+
+The `urn:nukytera:contracts:1.0:*` schema URNs and the `nukytera-standard`
+identifier are durable wire identities. Corinthos resolves the same URNs in
+its offline registry and accepts the same Standard reference. The wire version
+`1.0`, contract type codes, required fields and published references are stable.
 
 | Field | Meaning |
 | --- | --- |
@@ -77,7 +82,9 @@ plan, run and artifact identity, with a SHA-256 digest of the local file.
 
 ## Python API
 
-Import from `nukytera.contracts`.
+Import from `corinthos.contracts`. Phase 1.1 is an import-breaking rename.
+Use this prefix in callers with the `corinthos-core` distribution installed
+in a fresh environment. The public kernel API retains its behavior.
 
 | API | Result and side effects |
 | --- | --- |
@@ -94,6 +101,11 @@ Import from `nukytera.contracts`.
 | `store.list_events() -> list[dict]` | Read ordered publication events with exact revision identity. |
 | `store.verify_artifact(relative_path, sha256) -> None` | Read and verify an existing private artifact. |
 | `store.backup() -> Path` | Create a consistent private SQLite backup using the storage guide. |
+
+Use `corinthos.contracts.migration.migrate_legacy_state(project_root) -> bool`
+for an explicit offline copy of a legacy store. The
+[storage guide](storage.md#migrating-existing-project-state) describes the
+preconditions, integrity checks and collision behavior.
 
 `SchemaError` reports invalid shapes and unsupported wire versions.
 `IntegrityError` reports bad relationships, evidence or stored content.

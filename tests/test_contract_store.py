@@ -13,10 +13,10 @@ from threading import Barrier, Timer
 
 import pytest
 
-from nukytera.contracts import store as storage
-from nukytera.contracts.authority import PublishContext, approval_request
-from nukytera.contracts.model import ConflictError, ContractRef, IntegrityError, StoreError
-from nukytera.contracts.store import ContractStore
+from corinthos.contracts import store as storage
+from corinthos.contracts.authority import PublishContext, approval_request
+from corinthos.contracts.model import ConflictError, ContractRef, IntegrityError, StoreError
+from corinthos.contracts.store import ContractStore
 
 _EXAMPLES = Path(__file__).resolve().parents[1] / "examples" / "contracts"
 
@@ -53,9 +53,28 @@ def _revision(previous, revision_id):
     return document
 
 
+@pytest.mark.parametrize("has_target_directory", [False, True])
+def test_open_store_requires_explicit_migration_for_legacy_state(tmp_path, has_target_directory):
+    legacy = tmp_path / ".nukytera"
+    legacy.mkdir()
+    old_database = legacy / "state.db"
+    original = b"Existing private state must be left untouched."
+    old_database.write_bytes(original)
+    target = tmp_path / ".corinthos"
+    if has_target_directory:
+        target.mkdir()
+
+    with pytest.raises(StoreError, match="Legacy private state requires explicit migration"):
+        ContractStore(tmp_path)
+
+    assert old_database.read_bytes() == original
+    assert target.exists() is has_target_directory
+    assert not (target / "state.db").exists()
+
+
 def test_migration_publication_and_history_survive_reopen(tmp_path, project):
     store = ContractStore(tmp_path)
-    assert store.database_path == tmp_path / ".nukytera" / "state.db"
+    assert store.database_path == tmp_path / ".corinthos" / "state.db"
     first = _publish(store, project)
     second_document = _revision(project, "project-r2")
     second = _publish(store, second_document)
@@ -235,7 +254,7 @@ def test_corrupted_revision_body_is_rejected_on_read(tmp_path, project):
 
 @pytest.mark.parametrize("case", ["foreign", "future", "corrupt"])
 def test_unsupported_database_is_never_reinitialized(tmp_path, case):
-    private = tmp_path / ".nukytera"
+    private = tmp_path / ".corinthos"
     private.mkdir()
     database = private / "state.db"
     if case == "corrupt":
@@ -259,7 +278,7 @@ def test_migration_failure_leaves_an_empty_upgradeable_database(tmp_path, monkey
         patch.setattr(storage, "_MIGRATION_V1", (*storage._MIGRATION_V1, "INVALID SQL"))
         with pytest.raises(StoreError, match="database operation failed"):
             ContractStore(tmp_path)
-    database = tmp_path / ".nukytera" / "state.db"
+    database = tmp_path / ".corinthos" / "state.db"
     with closing(sqlite3.connect(database)) as connection:
         assert connection.execute("PRAGMA user_version").fetchone() == (0,)
         assert connection.execute("SELECT name FROM sqlite_schema").fetchall() == []
@@ -301,7 +320,7 @@ def test_read_only_write_failure_is_reported_without_partial_state(tmp_path, pro
 @pytest.mark.parametrize("filename", ["state.db", "state.db-journal"])
 def test_linked_state_files_cannot_modify_another_project(tmp_path, filename):
     project = tmp_path / "project"
-    private = project / ".nukytera"
+    private = project / ".corinthos"
     private.mkdir(parents=True)
     outside = tmp_path / "outside.db"
     outside.write_bytes(b"outside content")
@@ -329,7 +348,7 @@ def test_backup_can_reopen_without_overwriting_existing_snapshot(tmp_path, proje
     assert backup.read_bytes() == original
 
     restore_root = tmp_path / "backup-inspection"
-    restored_private = restore_root / ".nukytera"
+    restored_private = restore_root / ".corinthos"
     restored_private.mkdir(parents=True)
     shutil.copyfile(backup, restored_private / "state.db")
     restored = ContractStore(restore_root)

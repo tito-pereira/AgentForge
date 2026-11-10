@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Nukytera Standard — Foundation 0.1",
+  "title": "Corinthos Standard — Foundation 0.1",
   "type": "object",
   "additionalProperties": false,
   "required": ["standard_version", "commandments"],

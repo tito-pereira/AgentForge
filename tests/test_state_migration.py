@@ -1,0 +1,253 @@
+# SPDX-License-Identifier: MPL-2.0
+import io
+import os
+import shutil
+import sqlite3
+import stat
+import subprocess
+import sys
+from copy import deepcopy
+from pathlib import Path
+from zipfile import ZipFile
+
+import pytest
+
+from corinthos.contracts import (
+    AuthorityError,
+    ConflictError,
+    ContractRef,
+    ContractStore,
+    IntegrityError,
+    PublishContext,
+    StoreError,
+    approval_request,
+    migration,
+)
+
+BASELINE = "e058f4b96454dba44e5b31387c37061b75cec662"
+LEGACY_SETUP = """
+import hashlib, json
+from copy import deepcopy
+from pathlib import Path
+from nukytera.contracts import ContractRef, ContractStore, PublishContext, approval_request
+
+root = Path.cwd()
+store = ContractStore(root)
+directory = root / 'baseline/examples/contracts'
+order = ('project', 'technology-decision', 'module', 'workflow', 'validation',
+         'validation-result', 'evidence-report', 'project-revision-request')
+documents = [json.loads((directory / (name + '.json')).read_text('utf-8')) for name in order]
+plan, result = documents[4:6]
+matrix = plan['payload']['verification_matrix'][0]
+record = result['payload']
+execution = record['target_and_execution']
+evidence = b'Observed partial evidence in the disposable baseline fixture.'
+artifact = root / '.nukytera/artifacts/checks/partial.txt'
+artifact.parent.mkdir(parents=True)
+artifact.write_bytes(evidence)
+record['evidence_refs'].append({
+    'evidence_id': 'legacy-evidence', 'check_id': matrix['check_id'],
+    'source_ref': matrix['source_ref'], 'artifact_identity': execution['artifact_identity'],
+    'execution_context': {'validation_run_id': execution['validation_run_id'],
+                          'validation_plan_ref': record['validation_plan_ref']},
+    'verification_method': matrix['verification_method'], 'evaluator_ref': execution['evaluator_ref'],
+    'evidence_kind': matrix['required_evidence'][0], 'path': 'checks/partial.txt',
+    'sha256': hashlib.sha256(evidence).hexdigest(),
+})
+record['check_results'][0]['evidence_ids'] = ['legacy-evidence']
+second = deepcopy(documents[0])
+second['metadata'].update(version=2, revision_id='demo-intent-r2',
+                          supersedes=ContractRef.from_document(documents[0]).to_json())
+second['metadata']['approval']['approval_id'] = 'legacy-approval-r2'
+second['payload']['scope']['included'].append('Document the legacy setup.')
+for document in [*documents, second]:
+    origin = document['metadata']['provenance']
+    receipt = approval_request(document) if document['metadata']['approval'] else None
+    store.publish(document, context=PublishContext(origin['engine'], origin['actor_id'],
+                                                   lambda value: value == receipt))
+store.backup()
+snapshots = root / '.nukytera/snapshots'
+snapshots.mkdir()
+(snapshots / 'retained.json').write_bytes(b'{"build_id":"legacy-build"}')
+(snapshots / 'empty').mkdir()
+"""
+
+
+@pytest.fixture(scope="module")
+def original_state(tmp_path_factory):
+    root = tmp_path_factory.mktemp("original-store")
+    archive = subprocess.check_output(
+        ["git", "archive", "--format=zip", BASELINE, "src/nukytera", "examples/contracts"],
+        cwd=Path(__file__).resolve().parents[1],
+    )
+    with ZipFile(io.BytesIO(archive)) as files:
+        files.extractall(root / "baseline")
+    subprocess.run(
+        [sys.executable, "-c", LEGACY_SETUP],
+        cwd=root,
+        env={**os.environ, "PYTHONPATH": str(root / "baseline" / "src")},
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return root / ".nukytera"
+
+
+@pytest.fixture
+def legacy(tmp_path, original_state):
+    return shutil.copytree(original_state, tmp_path / ".nukytera")
+
+
+def test_old_store_migration_preserves_database_and_evidence(legacy):
+    root = legacy.parent
+    with pytest.raises(StoreError):
+        ContractStore(root)
+    database_bytes = (legacy / "state.db").read_bytes()
+    assert migration.migrate_legacy_state(root)
+    target = root / ".corinthos"
+    assert (target / "state.db").read_bytes() == database_bytes
+    assert (legacy / "state.db").read_bytes() == database_bytes
+    assert (target / "state.backup.db").read_bytes() == (legacy / "state.backup.db").read_bytes()
+    assert (target / "snapshots" / "empty").is_dir()
+    assert (target / "snapshots" / "retained.json").read_bytes() == (
+        legacy / "snapshots" / "retained.json"
+    ).read_bytes()
+    assert not migration.migrate_legacy_state(root)
+    store = ContractStore(root)
+    events = store.list_events()
+    assert len(events) == 9
+    assert [event["sequence"] for event in events] == list(range(1, 10))
+    first, second = store.list_revisions("demo-intent")
+    assert store.get(ContractRef.from_document(first)) == first
+    assert store.resolve_active("demo-intent") == second
+    result = store.list_revisions("demo-result")[0]
+    entry = result["payload"]["evidence_refs"][0]
+    store.verify_artifact(entry["path"], entry["sha256"])
+    third = deepcopy(second)
+    third["metadata"].update(version=3, revision_id="demo-intent-r3")
+    third["metadata"]["supersedes"] = ContractRef.from_document(second).to_json()
+    third["metadata"]["approval"]["approval_id"] = "new-approval-r3"
+    third["payload"]["scope"]["included"].append("Document the current setup.")
+    actor = third["metadata"]["provenance"]["actor_id"]
+    with pytest.raises(AuthorityError):
+        store.publish(third, context=PublishContext("PROJECT_MANAGER", actor))
+    receipt = approval_request(third)
+    store.publish(third, context=PublishContext("PROJECT_MANAGER", actor, {receipt}.__contains__))
+    assert store.resolve_active("demo-intent") == third
+    assert store.list_events()[:9] == events
+    assert (legacy / "state.db").read_bytes() == database_bytes
+
+
+def test_migration_refuses_existing_target_including_windows_case_alias(legacy):
+    root = legacy.parent
+    target = root / (".CoRiNtHoS" if os.name == "nt" else ".corinthos")
+    target.mkdir()
+    with pytest.raises(StoreError):
+        ContractStore(root)
+    with pytest.raises(ConflictError, match="existing .corinthos"):
+        migration.migrate_legacy_state(root)
+    assert list(target.iterdir()) == []
+    assert (legacy / "state.db").is_file()
+
+
+@pytest.mark.parametrize("fault", ["corrupt", "sidecar", "readonly", "busy", "artifact"])
+def test_migration_failure_keeps_source_and_publishes_nothing(legacy, fault):
+    root = legacy.parent
+    database = legacy / "state.db"
+    mode = database.stat().st_mode
+    connection = None
+    if fault == "corrupt":
+        database.write_bytes(b"invalid database")
+    elif fault == "sidecar":
+        (legacy / "state.db-wal").write_bytes(b"pending")
+    elif fault == "readonly":
+        database.chmod(mode & ~stat.S_IWUSR)
+    elif fault == "busy":
+        connection = sqlite3.connect(database, autocommit=True)
+        connection.execute("BEGIN IMMEDIATE")
+    else:
+        (legacy / "artifacts/checks/partial.txt").write_bytes(b"changed evidence")
+    before = database.read_bytes()
+    try:
+        with pytest.raises((StoreError, IntegrityError)):
+            migration.migrate_legacy_state(root)
+        assert not (root / ".corinthos").exists()
+        assert not list(root.glob(".corinthos-migration-*"))
+        assert database.read_bytes() == before
+    finally:
+        if connection is not None:
+            connection.close()
+        if fault == "readonly":
+            database.chmod(mode)
+
+
+def test_migration_does_not_follow_linked_private_files(legacy):
+    outside = legacy.parent / "outside.txt"
+    outside.write_bytes(b"outside")
+    os.link(outside, legacy / "artifacts" / "linked.txt")
+    with pytest.raises(StoreError, match="unlinked regular files"):
+        migration.migrate_legacy_state(legacy.parent)
+    assert outside.read_bytes() == b"outside"
+    assert not (legacy.parent / ".corinthos").exists()
+
+
+def test_migration_does_not_follow_directory_links(legacy):
+    root = legacy.parent
+    outside = root / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_bytes(b"outside")
+    linked = legacy / "linked"
+    if os.name == "nt":
+        subprocess.run(
+            ["cmd.exe", "/d", "/c", "mklink", "/J", ".nukytera\\linked", "outside"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+        )
+    else:
+        linked.symlink_to(outside, target_is_directory=True)
+    try:
+        assert linked.resolve() == outside.resolve()
+        with pytest.raises(StoreError, match="link or case-insensitive collision"):
+            migration.migrate_legacy_state(root)
+        assert sentinel.read_bytes() == b"outside"
+        assert not (root / ".corinthos").exists()
+    finally:
+        if os.name == "nt":
+            linked.rmdir()
+        else:
+            linked.unlink()
+
+
+def test_interrupted_publish_keeps_original_and_allows_retry(legacy, monkeypatch):
+    root = legacy.parent
+    before = (legacy / "state.db").read_bytes()
+    with monkeypatch.context() as patch:
+
+        def interrupted(*args):
+            raise PermissionError("simulated publish failure")
+
+        patch.setattr(migration, "_promote", interrupted)
+        with pytest.raises(StoreError):
+            migration.migrate_legacy_state(root)
+    assert not (root / ".corinthos").exists()
+    assert not list(root.glob(".corinthos-migration-*"))
+    assert (legacy / "state.db").read_bytes() == before
+    assert migration.migrate_legacy_state(root)
+
+
+def test_migration_never_replaces_a_target_created_at_publish_time(legacy, monkeypatch):
+    root = legacy.parent
+    original = migration._promote
+
+    def collide(staged, target):
+        target.mkdir()
+        original(staged, target)
+
+    monkeypatch.setattr(migration, "_promote", collide)
+    with pytest.raises(ConflictError, match="appeared during migration"):
+        migration.migrate_legacy_state(root)
+    assert list((root / ".corinthos").iterdir()) == []
+    assert not list(root.glob(".corinthos-migration-*"))

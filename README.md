@@ -1,18 +1,21 @@
-# Nukytera Core
+# Corinthos Core
 
-Nukytera is a local framework for directing programming agents through clear
+Corinthos is a local framework for directing programming agents through clear
 instructions, explicit human decisions, versioned contracts, and independent
 verification. It aims to preserve engineering standards when working with
 different agents, initially Codex and Claude Code.
 
 The implementation includes the **Phase 0 foundation** and the **Phase 1 Contract
 Kernel**, with package version `0.1.0`. Phase 0 established English-language public
-development, clean Windows and Linux environments, MPL 2.0 and the Nukytera identity.
+development, clean Windows and Linux environments and MPL 2.0.
 The product target remains Core v0.1, based on product specification revision v0.2.
 
-The brand is **Nukytera**, the Python distribution is `nukytera-core`, and the
-import package and CLI command are `nukytera`. Earlier names and execution evidence
-are preserved as history in [decisions](docs/decisions.md).
+The brand is **Corinthos**, the Python distribution is `corinthos-core`, and
+the sole supported import prefix and CLI command are `corinthos`. Phase 1.1
+changes these identifiers at version `0.1.0`. Update imports and command
+invocations in existing integrations and install into a fresh venv. The
+Contract Kernel keeps its behavior and durable wire identities.
+Earlier names and execution evidence are recorded in [decisions](docs/decisions.md).
 
 ## Current capabilities
 
@@ -59,8 +62,8 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -c "from pathlib import Path; import sys; print(sys.executable); assert sys.prefix != sys.base_prefix; assert Path(sys.prefix).resolve() == Path('.venv').resolve(); assert Path(sys.executable).absolute().is_relative_to(Path('.venv').resolve())"
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 .\.venv\Scripts\python.exe -m pip check
-.\.venv\Scripts\python.exe -m nukytera --help
-.\.venv\Scripts\nukytera.exe --version
+.\.venv\Scripts\python.exe -m corinthos --help
+.\.venv\Scripts\corinthos.exe --version
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m ruff format --check .
@@ -90,8 +93,8 @@ python3.12 -m venv .venv
 .venv/bin/python -c "from pathlib import Path; import sys; print(sys.executable); assert sys.prefix != sys.base_prefix; assert Path(sys.prefix).resolve() == Path('.venv').resolve(); assert Path(sys.executable).absolute().is_relative_to(Path('.venv').resolve())"
 .venv/bin/python -m pip install -e '.[dev]'
 .venv/bin/python -m pip check
-.venv/bin/python -m nukytera --help
-.venv/bin/nukytera --version
+.venv/bin/python -m corinthos --help
+.venv/bin/corinthos --version
 .venv/bin/python -m pytest
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
@@ -125,7 +128,7 @@ description for each one. The loader uses safe YAML parsing and JSON Schema
 From the repository root in PowerShell.
 
 ```powershell
-.\.venv\Scripts\python.exe -c "from nukytera.standard import load_standard; policy = load_standard('policies/standard.yaml', 'schemas/standard.schema.json'); print(', '.join(policy['commandments']))"
+.\.venv\Scripts\python.exe -c "from corinthos.standard import load_standard; policy = load_standard('policies/standard.yaml', 'schemas/standard.schema.json'); print(', '.join(policy['commandments']))"
 ```
 
 For POSIX, use `.venv/bin/python` as the executable. The API accepts explicit
@@ -155,8 +158,8 @@ exercise the API without certifying a product. See the
 
 | Path | Purpose |
 | --- | --- |
-| `src/nukytera/` | Package version, minimal CLI, Standard loader and Contract Kernel. |
-| `src/nukytera/contracts/schemas/` | Eight executable schemas and shared definitions, installed with the package. |
+| `src/corinthos/` | Package version, minimal CLI, Standard loader and Contract Kernel. |
+| `src/corinthos/contracts/schemas/` | Eight executable schemas and shared definitions, installed with the package. |
 | `examples/` | Eight sample contracts and the executable kernel demonstration. |
 | `policies/` | Versioned Standard policy. |
 | `schemas/` | Structural schema for the initial Standard. |
@@ -165,8 +168,12 @@ exercise the API without certifying a product. See the
 | `docs/` | Architecture, contract catalog, workflows, roadmap, and decisions. |
 | `.github/workflows/ci.yml` | Installation, CLI, lint, formatting, and test workflow. |
 
-`.nukytera/` holds private project state. `.gitignore` protects
+`.corinthos/` holds private project state. `.gitignore` protects
 local environments, private state, databases, caches, and common secret files.
+For existing projects with legacy state, close the writers and follow the
+[explicit state migration](docs/storage.md#migrating-existing-project-state)
+before opening the store. The migration preserves the original copy, published
+documents, approvals, evidence digests, references and audit order.
 Review staged content before committing.
 
 ## Development roadmap
@@ -182,8 +189,8 @@ Review staged content before committing.
 | 6 — Evolution + Hardening | Product evolution, isolated builds, feedback, recovery, and robustness. |
 
 These are construction phases. Each requires bounded tasks, tests, documentation,
-and review. Phase 1 uses a reviewed pull request. The project owner authorizes
-integration and the start of Phase 2 separately.
+and review. Phase 1.1 uses a reviewed migration pull request. The project
+owner authorizes its integration and the start of Phase 2 separately.
 
 ## Engineering documentation
 
@@ -200,7 +207,7 @@ requirements, binding technology and structural decisions, and human acceptance.
 
 ## License
 
-Nukytera is licensed under the [Mozilla Public License 2.0](LICENSE), with SPDX
+Corinthos is licensed under the [Mozilla Public License 2.0](LICENSE), with SPDX
 identifier `MPL-2.0`. Its file-level copyleft requires distributed covered source
 files, including modifications, to remain under MPL 2.0. Commercial use and
 distribution are permitted subject to the license conditions, including applicable

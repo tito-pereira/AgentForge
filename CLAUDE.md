@@ -33,16 +33,19 @@ rules are in [AGENTS.md](AGENTS.md). Public engineering context is available thr
 the [README](README.md) and local documentation. Keep private planning references
 outside published artifacts.
 
-Phase 0.3 migrates the brand to Nukytera, the distribution to `nukytera-core`, the
-package and CLI to `nukytera`, and private state to `.nukytera/`, retaining version
-`0.1.0`. Keep the five Commandments, six Engines, eight contract types, and MPL-2.0
-unchanged. Active commands use the new namespace, while earlier identities remain
-in historical evidence.
+Phase 1.1 migrates the brand to Corinthos, the distribution to `corinthos-core`,
+the package and CLI to `corinthos`, and private state to `.corinthos/`.
+Preserve version `0.1.0`, the five Commandments, six Engines, eight contract
+types and MPL-2.0. Keep earlier names in historical evidence and preserve
+durable wire identifiers.
 
 Use the [Contract Kernel API](docs/contracts.md) for schema checks, exact
 references, immutable publication and [private SQLite state](docs/storage.md).
 Trusted callers verify actor identity and approval of the exact publication.
 Published records retain historical references after active pointers change.
+Follow the [storage migration procedure](docs/storage.md#migrating-existing-project-state)
+for each authorized project. Preserve the published bytes, approval receipts,
+evidence hashes, event order, and SQLite application and schema markers.
 
 Inspect Git status, preserve existing work, protect secrets and private state, and
 respect the authorized directory. Mark results **NOT VERIFIED** when execution or
@@ -57,7 +60,7 @@ visibility, and licensing checks in [AGENTS.md](AGENTS.md).
 The project owner selected Mozilla Public License 2.0 (`MPL-2.0`). Preserve the
 complete [LICENSE](LICENSE), source notices/SPDX headers, packaging metadata, and
 accurate copyright and third-party notices. Never invent copyright-holder names
-or ownership transfers. Record license-related decisions. Phase 1 changes belong
+or ownership transfers. Record license-related decisions. Phase 1.1 changes belong
 on a reviewed feature branch and pull request. Merging into the default branch
 requires separate authorization. Preserve the historical `phase-1-baseline` tag
 and existing commit history.

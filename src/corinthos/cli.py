@@ -3,15 +3,15 @@
 
 import argparse
 
-from nukytera import __version__
+from corinthos import __version__
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="nukytera",
-        description="Nukytera Core - Phase 0 technical foundation.",
+        prog="corinthos",
+        description="Corinthos Core - Phase 0 technical foundation.",
     )
-    parser.add_argument("--version", action="version", version=f"nukytera {__version__}")
+    parser.add_argument("--version", action="version", version=f"corinthos {__version__}")
     parser.parse_args(argv)
     parser.print_help()
     return 0

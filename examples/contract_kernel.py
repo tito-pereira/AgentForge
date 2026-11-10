@@ -6,7 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from nukytera.contracts import (
+from corinthos.contracts import (
     ContractRef,
     ContractStore,
     IntegrityError,
@@ -53,7 +53,7 @@ def main() -> None:
         origin = document["metadata"]["provenance"]
         return PublishContext(origin["engine"], origin["actor_id"], receipts.__contains__)
 
-    with TemporaryDirectory(prefix="nukytera-contract-demo-") as directory:
+    with TemporaryDirectory(prefix="corinthos-contract-demo-") as directory:
         store = ContractStore(directory)
         references = [
             store.publish(document, context=context_for(document)) for document in documents
