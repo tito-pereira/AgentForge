@@ -21,6 +21,15 @@ from corinthos.contracts.model import ID_PATTERN, canonical_json
 from corinthos.contracts.schema import validate_schema
 
 from .reconciliation import RevisionReconciler
+from .verification import (
+    AuditExpectation,
+    CheckpointSpec,
+    ValidationGateConsumer,
+    _dependency_closure,
+    _digest_file,
+    safe_workspace_path,
+    workspace_snapshot,
+)
 
 _MAX_JSON = 1_048_576
 _MAX_INTEGER = 9_223_372_036_854_775_807
@@ -69,6 +78,43 @@ def _read(value):
         raise StoreError("Stored execution state is invalid. Preserve it for recovery.") from None
 
 
+def _expectations(details):
+    return tuple(AuditExpectation.from_json(item) for item in details.get("audit_expectations", ()))
+
+
+def _inputs_changed(root, inputs):
+    try:
+        return any(
+            _digest_file(safe_workspace_path(root, path)) != expected
+            for path, expected in inputs.items()
+        )
+    except (ValueError, OSError):
+        return True
+
+
+class PrerequisiteAuditBlocked(ConflictError):
+    """A historical completion no longer satisfies current downstream eligibility."""
+
+    def __init__(self, checkpoint_id, observations):
+        super().__init__(f"Required audit evidence blocks checkpoint prerequisite {checkpoint_id}.")
+        self.details = {
+            "reason": "PREREQUISITE_VALIDATION_BLOCKED",
+            "prerequisite_checkpoint_id": checkpoint_id,
+            "gates": observations,
+        }
+
+
+class CurrentAuditBlocked(ConflictError):
+    """The owned checkpoint's exact candidate lacks admissible formal proof."""
+
+    def __init__(self, observations):
+        super().__init__("Required Validation evidence blocks this checkpoint.")
+        self.details = {
+            "reason": "REQUIRED_VALIDATION_GATE_NOT_SATISFIED",
+            "gates": observations,
+        }
+
+
 class ExecutionRepository:
     """Serialize workspace effects without treating lease expiry as safe retry."""
 
@@ -76,6 +122,7 @@ class ExecutionRepository:
         if not isinstance(store, ContractStore):
             raise StoreError("Execution persistence requires the existing ContractStore.")
         self.store = store
+        self.gates = ValidationGateConsumer(store)
         self._clock = time if clock is None else clock
 
     def _now(self):
@@ -135,6 +182,14 @@ class ExecutionRepository:
                     "An approved execution source changed. Reconcile before continuing."
                 )
         return workflow
+
+    def require_eligible(self, execution_id, checkpoint_id):
+        """Recheck approved sources and required prerequisites before dispatch effects."""
+        with self.store._connection() as connection:
+            execution = self._row(connection, execution_id)
+            self._head(connection, execution)
+            checkpoint = self._checkpoint(connection, execution_id, checkpoint_id)
+            self._eligible(connection, execution, checkpoint)
 
     def _bindings(self, workflow, bindings):
         serialized = _json(bindings)
@@ -359,6 +414,99 @@ class ExecutionRepository:
             return self._attempt_view(connection, self._attempt(connection, attempt_id))
 
     @staticmethod
+    def _retained_candidate(connection, attempt_id):
+        row = connection.execute(
+            "SELECT data FROM wf_execution_events WHERE attempt_id = ? "
+            "AND kind = 'ATTEMPT_OBSERVATION' "
+            "AND json_type(data, '$.source_evidence') = 'object' "
+            "ORDER BY sequence DESC LIMIT 1",
+            (attempt_id,),
+        ).fetchone()
+        return _read(row["data"]) if row is not None else {}
+
+    def _source_manifest(self, attempt_id, details):
+        evidence = details.get("source_evidence")
+        if (
+            type(evidence) is not dict
+            or evidence.get("path") != f"runtime/{attempt_id}/source-verified.json"
+            or not isinstance(evidence.get("sha256"), str)
+        ):
+            raise ConflictError("The attempt has no safely retained verification candidate.")
+        self.store.verify_artifact(evidence["path"], evidence["sha256"])
+        path = self.store.database_path.parent / "artifacts" / evidence["path"]
+        data = path.read_bytes()
+        if sha256(data).hexdigest() != evidence["sha256"]:
+            raise IntegrityError("The retained candidate manifest has changed.")
+        try:
+            manifest = json.loads(data)
+        except (ValueError, TypeError, RecursionError):
+            raise IntegrityError("The retained candidate manifest is invalid.") from None
+        if (
+            type(manifest) is not dict
+            or manifest.get("artifact_identity") != details.get("artifact_identity")
+            or type(manifest.get("files")) is not dict
+        ):
+            raise IntegrityError("The retained candidate manifest differs from its exact attempt.")
+        return manifest
+
+    def audit_request(self, attempt_id):
+        """Return the exact still-available candidate for a separate audit process."""
+        with self.store._connection() as connection:
+            attempt = self._attempt(connection, attempt_id)
+            execution = self._row(connection, attempt["execution_id"])
+            lease = self._head(connection, execution)
+            checkpoint_id = attempt["checkpoint_id"]
+            checkpoint = self._checkpoint(connection, execution["execution_id"], checkpoint_id)
+            reference = ContractRef.from_json(_read(execution["workflow_ref"]))
+            self._fresh(connection, reference)
+            if checkpoint["attempt_id"] != attempt_id or not (
+                attempt["state"] == "VERIFYING"
+                and lease["attempt_id"] == attempt_id
+                and lease["fence"] == attempt["fence"]
+                and lease["expires_at"] > self._now()
+                or attempt["state"] == "BLOCKED"
+                and lease["attempt_id"] is None
+            ):
+                raise ConflictError("Use the current retained verifying or blocked candidate.")
+            details = _read(attempt["details"])
+            if attempt["state"] == "VERIFYING":
+                details.update(self._retained_candidate(connection, attempt_id))
+            identity = details.get("artifact_identity")
+            if details.get("cleanup_confirmed") is not True or not isinstance(identity, dict):
+                raise ConflictError("The attempt has no safely retained verification candidate.")
+            bindings = _read(execution["bindings"])
+            workspace, _ = self._workspace(
+                bindings["workspace"], self.store.database_path.parent.parent
+            )
+            workspace = Path(workspace)
+            spec = CheckpointSpec.from_json(bindings["checkpoints"][checkpoint_id])
+        manifest = self._source_manifest(attempt_id, details)
+        if workspace_snapshot(workspace) != manifest:
+            raise ConflictError("The workspace no longer matches the exact retained candidate.")
+        gates, expectations, _ = self.gates.requirements(
+            reference, checkpoint_id, spec, retained=_expectations(details)
+        )
+        return {
+            "attempt_id": attempt_id,
+            "workflow_ref": reference.to_json(),
+            "checkpoint_id": checkpoint_id,
+            "workspace": str(workspace),
+            "artifact_identity": identity,
+            "source_evidence": details["source_evidence"],
+            "expectations": [item.to_json() for item in expectations],
+            "required_gates": [
+                {
+                    "validation_plan_ref": gate.validation_plan_ref.to_json(),
+                    "result_ref": gate.result_ref.to_json() if gate.result_ref else None,
+                    "gate": gate.gate,
+                    "scope": list(gate.scope),
+                    "target_ref": gate.target_ref.to_json(),
+                }
+                for gate in gates
+            ],
+        }
+
+    @staticmethod
     def _attempt_view(connection, row):
         result = {**dict(row), "context": _read(row["context"]), "details": _read(row["details"])}
         lease = connection.execute(
@@ -378,25 +526,117 @@ class ExecutionRepository:
                 )
             ]
 
+    def _formal_inputs(self, attempt_id, details, observations):
+        """A command can read the whole candidate. Only explicit review paths bound input scope."""
+        from corinthos.validation.repository import ValidationRepository
+
+        try:
+            files = self._source_manifest(attempt_id, details)["files"]
+            paths = {
+                item["path"]
+                for deliverable in details["deliverables"].values()
+                for item in deliverable
+            }
+            if not paths:
+                return None
+            repository = ValidationRepository(self.store)
+            for observation in observations:
+                reference = ContractRef.from_json(observation["validation_plan_ref"])
+                for binding in repository.bindings(reference).values():
+                    if binding["command"] is not None or not binding["review_paths"]:
+                        return None
+                    paths.update(binding["review_paths"])
+            return {path: files[path] for path in paths}
+        except (ValueError, OSError, KeyError, TypeError, AttributeError):
+            return None
+
     def _eligible(self, connection, execution, checkpoint):
         workflow = self._fresh(connection, _read(execution["workflow_ref"]))
-        plan = next(
-            (
-                item
-                for item in workflow["payload"]["checkpoints"]
-                if item["checkpoint_id"] == checkpoint["checkpoint_id"]
-            ),
-            None,
-        )
-        if plan is None:
+        plans = {item["checkpoint_id"]: item for item in workflow["payload"]["checkpoints"]}
+        identifier = checkpoint["checkpoint_id"]
+        if identifier not in plans:
             raise StoreError("The checkpoint does not belong to its recorded Workflow.")
-        for dependency in plan["depends_on"]:
-            if (
-                self._checkpoint(connection, execution["execution_id"], dependency)["state"]
-                != "COMPLETED"
-            ):
+        reference = ContractRef.from_document(workflow)
+        bindings = _read(execution["bindings"])
+        root = Path(bindings["workspace"])
+        current_identity = None
+        for dependency in sorted(_dependency_closure(plans, (identifier,)) - {identifier}):
+            state = self._checkpoint(connection, execution["execution_id"], dependency)
+            if state["state"] != "COMPLETED":
                 raise ConflictError("A required checkpoint prerequisite is not completed.")
+            spec = bindings["checkpoints"][dependency]
+            spec = (
+                CheckpointSpec.from_json(spec)
+                if spec.get("required_gates") or spec.get("audit_expectations")
+                else None
+            )
+            attempt = (
+                self._attempt(connection, state["attempt_id"]) if state["attempt_id"] else None
+            )
+            details = _read(attempt["details"]) if attempt is not None else {}
+            retained = tuple(
+                AuditExpectation(item.level, reference, item.scope)
+                if item.target_ref.contract_type == "WORKFLOW"
+                else item
+                for item in _expectations(details)
+            )
+            gates, _ = self.gates.observe(
+                reference, dependency, spec, details.get("artifact_identity"), retained=retained
+            )
+            if gates:
+                inputs = self._formal_inputs(state["attempt_id"], details, gates)
+                if inputs is None or _inputs_changed(root, inputs):
+                    if current_identity is None:
+                        current_identity = workspace_snapshot(root)["artifact_identity"]
+                    if current_identity != details.get("artifact_identity"):
+                        gates, _ = self.gates.observe(
+                            reference, dependency, spec, current_identity, retained=retained
+                        )
+                        for gate in gates:
+                            if gate["state"] != "SATISFIED":
+                                gate["reason"] = (
+                                    "Prerequisite audit inputs or whole-candidate identity changed. "
+                                    + gate["reason"]
+                                )
+                                gate["artifact_identity"] = current_identity
+            if any(gate["state"] != "SATISFIED" for gate in gates):
+                raise PrerequisiteAuditBlocked(dependency, gates)
         return workflow
+
+    def _completion_audits(self, connection, execution, attempt, workflow, details):
+        bindings = _read(execution["bindings"])
+        value = bindings["checkpoints"][attempt["checkpoint_id"]]
+        spec = (
+            CheckpointSpec.from_json(value)
+            if value.get("required_gates") or value.get("audit_expectations")
+            else None
+        )
+        reference = ContractRef.from_document(workflow)
+        recorded = self._retained_candidate(connection, attempt["attempt_id"])
+        retained = (*_expectations(recorded), *_expectations(details))
+        gates, expectations, _ = self.gates.requirements(
+            reference, attempt["checkpoint_id"], spec, retained=retained
+        )
+        if not gates and not expectations:
+            return {}
+        workspace, _ = self._workspace(
+            bindings["workspace"], self.store.database_path.parent.parent
+        )
+        identity = workspace_snapshot(workspace)["artifact_identity"]
+        observed = recorded.get("artifact_identity", details.get("artifact_identity"))
+        if observed is not None and observed != identity:
+            raise ConflictError("The retained candidate changed before formal completion.")
+        observations, expectations = self.gates.observe(
+            reference, attempt["checkpoint_id"], spec, identity, retained=expectations
+        )
+        if any(item["state"] != "SATISFIED" for item in observations):
+            raise CurrentAuditBlocked(observations)
+        return {
+            "gates": observations,
+            "reason": "FORMAL_CHECKPOINT_GATES_SATISFIED",
+            "artifact_identity": identity,
+            "audit_expectations": [item.to_json() for item in expectations],
+        }
 
     def prepare(self, execution_id, checkpoint_id, expected_version, *, actor_id):
         with self.store._transaction() as connection:
@@ -657,6 +897,14 @@ class ExecutionRepository:
                 details = {**details, **checked}
                 merged = {**merged, **checked}
                 self._owned(connection, attempt, fence, owner_id, live=True)
+            if target_state == "COMPLETED":
+                checkpoint = self._checkpoint(
+                    connection, execution["execution_id"], attempt["checkpoint_id"]
+                )
+                workflow = self._eligible(connection, execution, checkpoint)
+                verified = self._completion_audits(connection, execution, attempt, workflow, merged)
+                details = {**details, **verified}
+                merged = {**merged, **verified}
             connection.execute(
                 "UPDATE wf_checkpoints SET state = ? WHERE execution_id = ? AND checkpoint_id = ?",
                 (target_state, execution["execution_id"], attempt["checkpoint_id"]),

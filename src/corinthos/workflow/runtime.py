@@ -14,9 +14,10 @@ from corinthos.adapters import ContextInput
 from corinthos.contracts import ConflictError, ContractRef, ContractStore, IntegrityError
 from corinthos.contracts.model import ID_PATTERN, canonical_json
 
-from .execution_repository import ExecutionRepository
+from .execution_repository import CurrentAuditBlocked, ExecutionRepository, PrerequisiteAuditBlocked
 from .reconciliation import RevisionReconciler
 from .verification import (
+    AuditExpectation,
     CheckpointSpec,
     CommandCheck,
     RequiredGate,
@@ -84,7 +85,7 @@ class _Heartbeat:
 class WorkflowRunner:
     """Execute one explicitly requested ready checkpoint; uncertain work needs recovery."""
 
-    def __init__(self, project_root, adapters, *, reviewer, repository=None):
+    def __init__(self, project_root, adapters, *, reviewer, repository=None, auditor=None):
         original = Path(project_root).absolute()
         self.root = original.resolve(strict=True)
         if original != self.root or not self.root.is_dir():
@@ -99,7 +100,10 @@ class WorkflowRunner:
             raise IntegrityError(
                 "Execution requires an explicit trusted technical review callback."
             )
+        if auditor is not None and not callable(auditor):
+            raise IntegrityError("An audit request handler must be a trusted callable.")
         self.adapters, self.reviewer = adapters, reviewer
+        self.auditor = auditor
         self.reconciler = RevisionReconciler(self.store)
         self.gates = ValidationGateConsumer(self.store)
         self.owner_id = "runner-" + uuid4().hex
@@ -151,6 +155,8 @@ class WorkflowRunner:
                 or not all(isinstance(item, str) for item in spec.review_items)
                 or not isinstance(spec.required_gates, (list, tuple))
                 or not all(isinstance(item, RequiredGate) for item in spec.required_gates)
+                or not isinstance(spec.audit_expectations, (list, tuple))
+                or not all(isinstance(item, AuditExpectation) for item in spec.audit_expectations)
             ):
                 raise IntegrityError(
                     "Execution specifications require structured commands, paths, review items and gates."
@@ -248,12 +254,32 @@ class WorkflowRunner:
                     raise IntegrityError(
                         "A required Validation gate has an invalid project or gate type."
                     )
-                if gate.gate == "CHECKPOINT" and (
-                    gate.target_ref != reference or spec.checkpoint_id not in gate.scope
+                plan = self.store.get(gate.validation_plan_ref)
+                if plan is None:
+                    level = {
+                        "CHECKPOINT": "MODULE"
+                        if gate.target_ref.contract_type == "MODULE"
+                        else "CHECKPOINT",
+                        "PLAYTEST_READINESS": "PLAYTEST_MILESTONE",
+                        "PRODUCT_VALIDATION": "PRODUCT",
+                    }[gate.gate]
+                    expectation = AuditExpectation(level, gate.target_ref, gate.scope)
+                else:
+                    expectation = AuditExpectation.from_plan(plan)
+                if (
+                    expectation.gate != gate.gate
+                    or expectation.target_ref != gate.target_ref
+                    or set(expectation.scope) != set(gate.scope)
+                    or not self.gates.scope_allowed(workflow, spec.checkpoint_id, expectation)
                 ):
                     raise IntegrityError(
-                        "A required checkpoint gate must cover this exact Workflow and checkpoint."
+                        "A required gate must cover an exact approved scope at this checkpoint."
                     )
+            if len(set(spec.audit_expectations)) != len(spec.audit_expectations) or any(
+                not self.gates.scope_allowed(workflow, spec.checkpoint_id, expectation)
+                for expectation in spec.audit_expectations
+            ):
+                raise IntegrityError("Formal audits need distinct scopes due at this checkpoint.")
             bindings["checkpoints"][spec.checkpoint_id] = spec.to_json()
         canonical_json(bindings)
         return bindings
@@ -262,6 +288,10 @@ class WorkflowRunner:
         reference = _reference(workflow_ref)
         bindings = self.prepare_bindings(reference, specs)
         return self.repository.register(reference, bindings, actor_id=actor_id)
+
+    def audit_request(self, attempt_id):
+        """Inspect a retained candidate for a separate independent evaluator."""
+        return self.repository.audit_request(attempt_id)
 
     def _context(self, workflow, checkpoint, spec, execution, source):
         payload = workflow["payload"]
@@ -392,19 +422,29 @@ class WorkflowRunner:
         )
         source = workspace_snapshot(self.root)
         durable, context = self._context(workflow, checkpoint, spec, execution, source)
-        if execution["checkpoints"][ready]["state"] != "READY":
-            execution = self.repository.prepare(
-                execution_id, ready, execution["version"], actor_id=self.owner_id
+        try:
+            if execution["checkpoints"][ready]["state"] != "READY":
+                execution = self.repository.prepare(
+                    execution_id, ready, execution["version"], actor_id=self.owner_id
+                )
+            attempt = self.repository.claim(
+                execution_id,
+                ready,
+                execution["version"],
+                owner_id=self.owner_id,
+                provider=provider,
+                context=durable,
+                ttl=60,
             )
-        attempt = self.repository.claim(
-            execution_id,
-            ready,
-            execution["version"],
-            owner_id=self.owner_id,
-            provider=provider,
-            context=durable,
-            ttl=60,
-        )
+        except PrerequisiteAuditBlocked as blocker:
+            self.repository.block(
+                execution_id,
+                ready,
+                execution["version"],
+                actor_id=self.owner_id,
+                details=blocker.details,
+            )
+            return None
         context = replace(context, attempt_id=attempt["attempt_id"])
         details = {"cleanup_confirmed": True}
         with _Heartbeat(self, attempt, reference, cancel) as heartbeat:
@@ -430,6 +470,7 @@ class WorkflowRunner:
                     owner_id=self.owner_id,
                     details={"source_before": before, "dispatch_intent": "RECORDED_BEFORE_PROCESS"},
                 )
+                self.repository.require_eligible(execution_id, ready)
                 details["cleanup_confirmed"] = False
                 result = self.adapters.invoke(
                     provider, context, timeout=timeout, cancel=heartbeat.cancel
@@ -476,6 +517,8 @@ class WorkflowRunner:
                     details=details,
                 )
                 return self._verify(attempt, workflow, checkpoint, spec, source, heartbeat, details)
+            except PrerequisiteAuditBlocked as blocker:
+                return self._negative(attempt, "BLOCKED", {**details, **blocker.details})
             except (ValueError, OSError, KeyboardInterrupt):
                 return self._negative(
                     attempt,
@@ -561,6 +604,31 @@ class WorkflowRunner:
             "source-verified.json",
             canonical_json(final).encode(),
         )
+        prior = attempt["previous_attempt_id"]
+        retained = ()
+        if prior is not None:
+            previous = self.repository.get_attempt(prior)
+            retained = tuple(
+                AuditExpectation.from_json(item)
+                for item in previous["details"].get("audit_expectations", ())
+            )
+        gates, retained, _ = self.gates.requirements(
+            reference, checkpoint["checkpoint_id"], spec, retained=retained
+        )
+        details["source_evidence"] = evidence
+        if retained:
+            details["audit_expectations"] = [item.to_json() for item in retained]
+        self.repository.observe(
+            attempt["attempt_id"],
+            attempt["fence"],
+            owner_id=self.owner_id,
+            details={
+                "source_evidence": evidence,
+                "artifact_identity": final["artifact_identity"],
+                "audit_expectations": details.get("audit_expectations", []),
+                "cleanup_confirmed": details["cleanup_confirmed"],
+            },
+        )
         request = {
             "attempt_id": attempt["attempt_id"],
             "checkpoint": checkpoint,
@@ -602,16 +670,21 @@ class WorkflowRunner:
             return self._negative(
                 attempt, "BLOCKED", {**details, "reason": "TECHNICAL_REVIEW_REJECTED"}
             )
+        if self.auditor is not None and (gates or retained):
+            self.auditor(self.audit_request(attempt["attempt_id"]))
 
         def observe_gates():
-            required = {
-                gate.validation_plan_ref: gate
-                for gate in self.gates.applicable(reference, checkpoint["checkpoint_id"])
-            }
-            required.update({gate.validation_plan_ref: gate for gate in spec.required_gates})
-            return [
-                self.gates.consume(gate, final["artifact_identity"]) for gate in required.values()
-            ]
+            nonlocal retained
+            observations, retained = self.gates.observe(
+                reference,
+                checkpoint["checkpoint_id"],
+                spec,
+                final["artifact_identity"],
+                retained=retained,
+            )
+            if retained:
+                details["audit_expectations"] = [item.to_json() for item in retained]
+            return observations
 
         observations = observe_gates()
         details["gates"] = observations
@@ -629,9 +702,7 @@ class WorkflowRunner:
                 "INTERRUPTED",
                 {**details, "reason": "SOURCE_OR_PLAN_CHANGED_BEFORE_COMPLETION"},
             )
-        details.update(
-            reason="PRELIMINARY_CHECKPOINT_OBLIGATIONS_SATISFIED", source_evidence=evidence
-        )
+        details["reason"] = "PRELIMINARY_CHECKPOINT_OBLIGATIONS_SATISFIED"
         failure = {}
 
         def completion_guard():
@@ -649,7 +720,13 @@ class WorkflowRunner:
                     state="INTERRUPTED", reason="SOURCE_OR_PLAN_CHANGED_BEFORE_COMPLETION"
                 )
                 raise ConflictError("The source or approved plan changed before completion.")
-            return {"gates": current_gates}
+            verified = {"gates": current_gates}
+            if current_gates:
+                verified.update(
+                    reason="FORMAL_CHECKPOINT_GATES_SATISFIED",
+                    audit_expectations=[item.to_json() for item in retained],
+                )
+            return verified
 
         try:
             return self.repository.transition(
@@ -660,6 +737,8 @@ class WorkflowRunner:
                 details=details,
                 completion_guard=completion_guard,
             )
+        except (CurrentAuditBlocked, PrerequisiteAuditBlocked) as blocker:
+            return self._negative(attempt, "BLOCKED", {**details, **blocker.details})
         except ConflictError:
             if not failure:
                 raise

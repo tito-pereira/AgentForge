@@ -6,7 +6,7 @@ private. Keep `.corinthos/`, backups, journals, and the legacy `.nukytera/`
 and `.agentforge/` directories out of Git. The library uses normal OS
 permissions and parameterized SQL.
 
-## SQLite version 4
+## SQLite version 5
 
 | Table | Contents |
 | --- | --- |
@@ -26,18 +26,22 @@ permissions and parameterized SQL.
 | `wf_attempts` | Owned/fenced provider or verification attempts, exact context, retained observations and predecessor attempt. |
 | `wf_workspace_leases` | Current workspace execution/attempt owner, expiry and monotonic fencing generation. |
 | `wf_execution_events` | Append-only execution, attempt, recovery and reconciliation observations. |
+| `val_drafts` | Versioned drafts of scoped Validation plans and reviewed procedures. |
+| `val_plan_bindings` | Immutable typed procedures and method reviews sealed by an exact published VC. |
+| `val_runs` | Fenced run context, exact candidate identity, earlier-run lineage and frozen result. |
+| `val_events` | Append-only run claims, check observations, inspection and publication events. |
 
 Each connection enables foreign keys. The application marker `0x4E554B59` and
-SQLite `user_version = 4` identify the current database schema. Initialization is an
-atomic version 0-to-4 migration for an empty database. Incompatible, foreign and
+SQLite `user_version = 5` identify the current database schema. Initialization is an
+atomic version 0-to-5 migration for an empty database. Incompatible, foreign and
 corrupt stores fail without being rebuilt. The database schema version is
 independent of the JSON wire version `1.0`.
 Phase 1.1 preserved SQLite version 1 during the naming migration. Phase 2
 introduced v2 PM sessions and receipts. The historical Phase 3 A–D delivery
 introduced v3 planning and publication authority state. The E–F continuation
-adds the five v4 execution tables above. The application ID, wire version `1.0`,
-published document bytes/hashes, exact references and earlier table meanings
-are preserved.
+added the five v4 execution tables. Phase 4 adds the four v5 Validation tables.
+The application ID, wire version `1.0`, published document bytes/hashes, exact
+references and earlier table meanings are preserved.
 
 The shared compare-and-swap and append-only turn mechanics serve PM and planning
 in separate namespaces. Execution uses its own versioned snapshots, attempts,
@@ -45,41 +49,36 @@ workspace leases and append-only observations in the same private database.
 PM listing continues to see only PM sessions. The
 [runtime guide](workflow-execution.md) explains current execution and recovery.
 
-## Upgrading a version 3 store
+## Upgrading an existing store
 
-Opening a verified v3 store takes a bounded immediate write reservation and
+Opening a verified v1 through v4 store takes a bounded immediate write reservation and
 checks SQLite integrity, foreign keys, application marker and schema objects.
 Before changing the schema, a separate read connection makes a consistent
-private `state.pre-v4-<unique-id>.db` backup. Its original v3 markers and integrity
-are verified before it is published at an unused filename. The reservation
+private original-version backup. Its original markers and integrity are verified
+before it is published at an unused filename. The reservation
 prevents concurrent writers while the backup observes the committed source.
 
-The five execution tables, append-only event triggers and v4 marker then commit
-in one transaction. A failed upgrade rolls back the schema/version changes and
-retains any completed verified backup. Fresh empty stores initialize directly
-at v4 without a pre-upgrade backup. Read-only, corrupt, foreign, incompatible
-and unsupported future-version stores fail with existing state preserved.
+Every missing schema addition and the v5 marker commit in one transaction.
+A failed upgrade rolls back the schema/version changes and retains any
+completed verified backup. Fresh empty stores initialize directly at v5
+without a pre-upgrade backup. Read-only, corrupt, foreign, incompatible and
+unsupported future-version stores fail with existing state preserved.
 
-The [execution storage tests](../tests/test_execution_storage.py) use a genuine
-v3 state created by the earlier A–D implementation. They compare every old row,
-verify the pre-v4 backup and repeat reopening without an extra migration. They
-also exercise injected upgrade failure, rollback and read-only preservation.
+The [execution storage tests](../tests/test_execution_storage.py) use databases
+created by the actual earlier v3 and v4 implementations. The v4 fixture
+includes published contracts, approvals, mandates and Workflow execution
+history. The tests compare old rows, verify original-version backups and
+exercise rollback and reopening without an extra migration.
 The [Phase 3 verification record](phase-3-verification.md) identifies actual
 installed-wheel results and their environment.
 
-## Upgrading a version 1 store
-
-Versions 1, 2 and 3 remain supported forward-upgrade inputs. The current loader
-verifies the actual starting schema and backs up that original committed state
-once, then applies every missing migration within one bounded transaction.
-Intermediate schema versions remain historical milestones.
-
 | Starting state | Original-state backup | Missing schema additions |
 | --- | --- | --- |
-| v1 Contract Kernel | `state.pre-v2-<unique-id>.db` | v2 PM, v3 planning and v4 execution. |
-| v2 Project Manager | `state.pre-v3-<unique-id>.db` | v3 planning and v4 execution. |
-| v3 Workflow planning | `state.pre-v4-<unique-id>.db` | v4 execution. |
-| v4 current store | Existing state remains current. | No forward migration. |
+| v1 Contract Kernel | `state.pre-v2-<unique-id>.db` | v2 PM, v3 planning, v4 execution and v5 Validation. |
+| v2 Project Manager | `state.pre-v3-<unique-id>.db` | v3 planning, v4 execution and v5 Validation. |
+| v3 Workflow planning | `state.pre-v4-<unique-id>.db` | v4 execution and v5 Validation. |
+| v4 Workflow execution | `state.pre-v5-<unique-id>.db` | v5 Validation. |
+| v5 current store | Existing state remains current. | No forward migration. |
 
 The backup filename records the next migration after the original version.
 Directly opening an older store with the current release produces one verified
@@ -169,6 +168,26 @@ commands, actual state transitions and reconciliation limits. The
 [verification record](phase-3-verification.md) identifies the installed-wheel
 regression and distinguishes it from production approvals and pilot evidence.
 
+## Validation state and recovery
+
+Version 5 records guided drafts with version-checked updates. Publication commits
+the exact Validation Contract, its bound procedures and the independent adequacy
+reviews in one transaction. Digests in the published contract bind the two private
+records to that revision. The Kernel remains the contract writer.
+
+A Validation run claims an exact plan and artifact under its own worker lease.
+Only its current owner can append check observations or complete the run. An
+expired lease requires explicit inspection before recovery. Observations retain
+their original run and check identity. The ordinary completion path freezes the
+result and publishes it under one writer reservation. Inspected recovery freezes
+an interrupted result from the retained observations. A separate publication
+command can resume a frozen result and returns its existing reference on a retry.
+Another attempt gets a new run identity and can link to its predecessor.
+
+A database backup retains draft, plan and run rows. Preserve the original
+evidence files separately to keep result references verifiable. The
+[Validation guide](validation.md) covers candidates, evidence and gate recovery.
+
 ## Artifacts and trust boundaries
 
 Planning review freezes an explicit set of complete TDC, Module and Workflow
@@ -214,7 +233,7 @@ Treat a repository folder rename and a private state migration as separate
 operations. Use an authorized project root under your control as the parent of
 both private directories. Close the legacy `.nukytera/` database cleanly and
 stop all users of both directories, including artifact writers. The source
-must be a writable supported SQLite database, version 1, 2, 3 or 4, in
+must be a writable supported SQLite database, version 1, 2, 3, 4 or 5, in
 rollback-journal mode with no WAL, shared-memory or rollback journal sidecars.
 Unsafe filesystem entries,
 incomplete trees and incompatible or corrupt databases block migration.
@@ -259,9 +278,9 @@ Keep it offline while using the verified target. On failure, preserve the
 original and resolve the reported issue before retrying. The library migrates
 only the supplied root. Opening `ContractStore` does not start a migration.
 
-This directory migration accepts verified version 1, 2, 3 and 4 databases and
+This directory migration accepts verified version 1, 2, 3, 4 and 5 databases and
 preserves their original version during the byte comparison. Opening the verified
-target with the current Kernel performs any required independent upgrade to v4.
+target with the current Kernel performs any required independent upgrade to v5.
 Repeating the naming migration before target changes is a no-op. Once the target is
 upgraded or otherwise evolves, its differing bytes are treated as a conflict
 and preserved. Continue using the verified current target.

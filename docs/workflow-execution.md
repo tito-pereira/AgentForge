@@ -34,11 +34,15 @@ guided questions collect the following bindings.
   and contained in the authorized workspace. Private state and Git internals
   remain protected.
 
-Active published checkpoint Validation plans are discovered and attached as
-required gates. Configuration exposes those exact references. The runtime also
-checks applicable plans during execution. A missing, failed, stale, interrupted
-or wrong-artifact result cannot satisfy an independent gate. The CLI provides
-no switch to disable this policy or manufacture a Validation Result.
+Configuration discovers compatible active Validation plans for the checkpoint
+gate, including checkpoint, module and integration scopes. It displays their
+exact references. Use `--formal-audits` with `configure` or `reconcile` to record
+the expected independent scopes for a managed checkpoint, including one whose
+plan is still outstanding. The runtime preserves those expectations and checks
+applicable active plans during execution. An expected plan must be ready, and
+each required result must come from a managed independent run of the exact
+candidate. Failed, stale, interrupted and wrong-artifact runs leave the gate
+blocked. See [Validation Engine](validation.md) for supported scopes.
 
 Before recording completion, the trusted runner repeats source/cancellation/plan
 checks, rediscovers applicable active Validation plans and consumes their current
@@ -62,13 +66,14 @@ when using the installed wheel from another working directory.
 
 | Command | Behavior |
 | --- | --- |
-| `workflow configure CONTRACT_ID [--revision REVISION_ID]` | Bind an exact approved Workflow to real checks and files through guided questions. |
+| `workflow configure CONTRACT_ID [--revision REVISION_ID] [--formal-audits]` | Bind an exact approved Workflow to real checks and files and record managed audit expectations. |
 | `workflow executions` | List durable execution identities and states. |
 | `workflow status [EXECUTION_ID]` | Show checkpoints, attempts, evidence and lease observations. |
 | `workflow execute [EXECUTION_ID] --provider codex --timeout 300` | Run one currently eligible checkpoint, actual checks and explicit technical review. |
 | `workflow execution-history [EXECUTION_ID]` | Inspect append-only runtime observations. |
+| `workflow audit-request ATTEMPT_ID` | Inspect the retained candidate and its exact independent audit requirements. |
 | `workflow recover [EXECUTION_ID] [CHECKPOINT_ID]` | Inspect previous effects, then explicitly choose retry readiness, verification-only or blocking. |
-| `workflow reconcile EXECUTION_ID CONTRACT_ID [--revision REVISION_ID]` | Compare a replacement approved plan, validate its bindings and create a successor execution. |
+| `workflow reconcile EXECUTION_ID CONTRACT_ID [--revision REVISION_ID] [--formal-audits]` | Compare a replacement approved plan, validate its bindings and audit expectations, and create a successor execution. |
 | `workflow changes CONTRACT_ID [--revision REVISION_ID]` | Inspect exact active-source drift and conservative affected/preserved IDs. |
 | `workflow request CONTRACT_ID [--revision REVISION_ID] [--request-id REQUEST_ID]` | Diagnose structural incompatibility, route a direct owner change, or retain ordinary repair scope. |
 
@@ -120,6 +125,23 @@ Every declared output must exist and match its permitted path and content
 inventory. Unexpected changed paths, failed commands, incomplete criterion
 review or missing required gate evidence keep the attempt blocked or unverified.
 Changing an artifact after review requires renewed verification of that artifact.
+
+## Independent audit of a retained candidate
+
+Use `workflow --root PROJECT_ROOT audit-request ATTEMPT_ID` after the candidate
+has been retained in verification or blocked pending an expected audit. An
+independent evaluator can run the matching plan with
+`validation --root PROJECT_ROOT run PLAN_ID --workflow-attempt ATTEMPT_ID --evaluator EVALUATOR_ID`.
+If using a separate copy, its complete candidate identity must match the request.
+Validation records its own run and evidence without dispatching the implementer
+or recording human product acceptance.
+
+After the independent result is available, inspect the stopped attempt and use
+`workflow --root PROJECT_ROOT recover EXECUTION_ID CHECKPOINT_ID`. Choose `VERIFY`
+after the `STOPPED` and `INSPECTED` confirmations to check the retained files.
+The completion guard rechecks current independent evidence before downstream
+work becomes eligible. If a finding requires implementation repair, preserve
+the evidence and use inspected `RETRY` for a new attempt with its own candidate.
 
 ## State, leases and recovery
 
@@ -235,6 +257,7 @@ from corinthos.workflow.verification import CheckpointSpec, CommandCheck, Techni
 - `RevisionReconciler(store_or_root)` provides `inspect`, `compare`,
   `create_revision_request`, `negotiate_request` and `start_project_revision`.
 
-These APIs use the existing Kernel and private SQLite schema. Full general
-product-evolution automation, builds promoted for playtest, independent
-Validation/Report and formal product acceptance remain later-phase capabilities.
+These APIs use the existing Kernel and private SQLite schema. The
+[Validation Engine](validation.md) supplies independent results for managed
+gates. Full general product-evolution automation, builds promoted for playtest,
+Report and formal product acceptance remain later-phase capabilities.

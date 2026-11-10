@@ -28,7 +28,7 @@ from .schema import validate_schema
 from .semantics import validate_semantics
 
 _APPLICATION_ID = 0x4E554B59
-_SCHEMA_VERSION = 4
+_SCHEMA_VERSION = 5
 _LOCK_TIMEOUT = 5.0
 _BUSY_CODES = {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
 _ACTIVE_TYPES = frozenset({"PROJECT", "WORKFLOW", "MODULE", "TECHNOLOGY_DECISION", "VALIDATION"})
@@ -277,6 +277,95 @@ _MIGRATION_V4 = (
                     WHERE sequence = NEW.sequence OR event_id = NEW.event_id)
        BEGIN SELECT RAISE(ABORT, 'Execution observations are append-only'); END""",
 )
+_MIGRATION_V5 = (
+    """CREATE TABLE val_drafts (
+        draft_id TEXT PRIMARY KEY NOT NULL,
+        version INTEGER NOT NULL CHECK (version >= 1),
+        snapshot TEXT NOT NULL
+    )""",
+    """CREATE TABLE val_plan_bindings (
+        revision_id TEXT PRIMARY KEY NOT NULL REFERENCES revisions (revision_id),
+        bindings TEXT NOT NULL,
+        reviews TEXT NOT NULL
+    )""",
+    """CREATE TRIGGER val_bindings_no_update BEFORE UPDATE ON val_plan_bindings
+       BEGIN SELECT RAISE(ABORT, 'Validation plan bindings are immutable'); END""",
+    """CREATE TRIGGER val_bindings_no_delete BEFORE DELETE ON val_plan_bindings
+       BEGIN SELECT RAISE(ABORT, 'Validation plan bindings are retained'); END""",
+    """CREATE TRIGGER val_bindings_no_replace BEFORE INSERT ON val_plan_bindings
+       WHEN EXISTS (SELECT 1 FROM val_plan_bindings WHERE revision_id = NEW.revision_id)
+       BEGIN SELECT RAISE(ABORT, 'Validation plan bindings are immutable'); END""",
+    """CREATE TABLE val_runs (
+        run_id TEXT PRIMARY KEY NOT NULL,
+        plan_revision_id TEXT NOT NULL REFERENCES revisions (revision_id),
+        plan_ref TEXT NOT NULL,
+        artifact_sha256 TEXT NOT NULL,
+        evaluator TEXT NOT NULL,
+        owner TEXT NOT NULL,
+        expires_at REAL NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('RUNNING', 'FROZEN', 'PUBLISHED')),
+        context TEXT NOT NULL,
+        previous_run_id TEXT REFERENCES val_runs (run_id),
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        frozen_result TEXT,
+        frozen_sha256 TEXT,
+        result_revision_id TEXT UNIQUE REFERENCES revisions (revision_id),
+        CHECK ((state = 'RUNNING') = (finished_at IS NULL)),
+        CHECK ((state = 'RUNNING') = (frozen_result IS NULL)),
+        CHECK ((state = 'RUNNING') = (frozen_sha256 IS NULL)),
+        CHECK ((state = 'PUBLISHED') = (result_revision_id IS NOT NULL))
+    )""",
+    """CREATE UNIQUE INDEX val_one_unfinished_run_per_target
+       ON val_runs (plan_revision_id, artifact_sha256)
+       WHERE state IN ('RUNNING', 'FROZEN')""",
+    """CREATE TRIGGER val_runs_binding BEFORE UPDATE ON val_runs
+       WHEN OLD.run_id IS NOT NEW.run_id
+         OR OLD.plan_revision_id IS NOT NEW.plan_revision_id
+         OR OLD.plan_ref IS NOT NEW.plan_ref
+         OR OLD.artifact_sha256 IS NOT NEW.artifact_sha256
+         OR OLD.evaluator IS NOT NEW.evaluator
+         OR OLD.owner IS NOT NEW.owner
+         OR OLD.context IS NOT NEW.context
+         OR OLD.previous_run_id IS NOT NEW.previous_run_id
+         OR OLD.started_at IS NOT NEW.started_at
+         OR OLD.state = 'PUBLISHED'
+         OR (OLD.state = 'FROZEN' AND (
+             NEW.state != 'PUBLISHED'
+             OR OLD.finished_at IS NOT NEW.finished_at
+             OR OLD.frozen_result IS NOT NEW.frozen_result
+             OR OLD.frozen_sha256 IS NOT NEW.frozen_sha256
+             OR OLD.expires_at IS NOT NEW.expires_at
+         ))
+         OR (OLD.state = 'RUNNING' AND NEW.state = 'PUBLISHED')
+       BEGIN SELECT RAISE(ABORT, 'Validation runs retain exact bindings and frozen results'); END""",
+    """CREATE TRIGGER val_runs_no_delete BEFORE DELETE ON val_runs
+       BEGIN SELECT RAISE(ABORT, 'Validation runs are retained'); END""",
+    """CREATE TRIGGER val_runs_no_replace BEFORE INSERT ON val_runs
+       WHEN EXISTS (SELECT 1 FROM val_runs WHERE run_id = NEW.run_id
+                    OR (plan_revision_id = NEW.plan_revision_id
+                        AND artifact_sha256 = NEW.artifact_sha256
+                        AND state IN ('RUNNING', 'FROZEN')
+                        AND NEW.state IN ('RUNNING', 'FROZEN'))
+                    OR (result_revision_id IS NOT NULL
+                        AND result_revision_id = NEW.result_revision_id))
+       BEGIN SELECT RAISE(ABORT, 'Validation runs are retained'); END""",
+    """CREATE TABLE val_events (
+        sequence INTEGER PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES val_runs (run_id),
+        kind TEXT NOT NULL,
+        data TEXT NOT NULL,
+        occurred_at TEXT NOT NULL
+    )""",
+    """CREATE INDEX val_events_run_sequence ON val_events (run_id, sequence)""",
+    """CREATE TRIGGER val_events_no_update BEFORE UPDATE ON val_events
+       BEGIN SELECT RAISE(ABORT, 'Validation observations are append-only'); END""",
+    """CREATE TRIGGER val_events_no_delete BEFORE DELETE ON val_events
+       BEGIN SELECT RAISE(ABORT, 'Validation observations are append-only'); END""",
+    """CREATE TRIGGER val_events_no_replace BEFORE INSERT ON val_events
+       WHEN EXISTS (SELECT 1 FROM val_events WHERE sequence = NEW.sequence)
+       BEGIN SELECT RAISE(ABORT, 'Validation observations are append-only'); END""",
+)
 _REQUIRED_TABLES_V1 = frozenset({"contracts", "revisions", "contract_references", "audit_events"})
 _REQUIRED_TABLES_V2 = _REQUIRED_TABLES_V1 | {"pm_sessions", "pm_turns", "pm_approvals"}
 _REQUIRED_TABLES_V3 = _REQUIRED_TABLES_V2 | {
@@ -285,12 +374,18 @@ _REQUIRED_TABLES_V3 = _REQUIRED_TABLES_V2 | {
     "wf_approvals",
     "wf_mandates",
 }
-_REQUIRED_TABLES = _REQUIRED_TABLES_V3 | {
+_REQUIRED_TABLES_V4 = _REQUIRED_TABLES_V3 | {
     "wf_executions",
     "wf_checkpoints",
     "wf_attempts",
     "wf_workspace_leases",
     "wf_execution_events",
+}
+_REQUIRED_TABLES = _REQUIRED_TABLES_V4 | {
+    "val_drafts",
+    "val_plan_bindings",
+    "val_runs",
+    "val_events",
 }
 _REVISIONS = """SELECT revisions.*, contracts.contract_type, contracts.project_id,
                 contracts.active_revision_id
@@ -310,7 +405,7 @@ def _markers(connection: sqlite3.Connection) -> tuple[int, int]:
 
 def _verify_database(connection: sqlite3.Connection, version: int) -> None:
     """Check a supported schema without upgrading or rewriting its records."""
-    if version not in (1, 2, 3, _SCHEMA_VERSION) or _markers(connection) != (
+    if version not in (1, 2, 3, 4, _SCHEMA_VERSION) or _markers(connection) != (
         _APPLICATION_ID,
         version,
     ):
@@ -322,7 +417,8 @@ def _verify_database(connection: sqlite3.Connection, version: int) -> None:
         1: _REQUIRED_TABLES_V1,
         2: _REQUIRED_TABLES_V2,
         3: _REQUIRED_TABLES_V3,
-        4: _REQUIRED_TABLES,
+        4: _REQUIRED_TABLES_V4,
+        5: _REQUIRED_TABLES,
     }[version]
     if not required <= tables:
         raise StoreError("The state database schema is incomplete.")
@@ -441,7 +537,7 @@ class ContractStore:
 
     def _migrate(self, connection: sqlite3.Connection) -> None:
         application, version = _markers(connection)
-        if application == _APPLICATION_ID and version in (1, 2, 3, _SCHEMA_VERSION):
+        if application == _APPLICATION_ID and version in (1, 2, 3, 4, _SCHEMA_VERSION):
             _verify_database(connection, version)
             if version == _SCHEMA_VERSION:
                 return
@@ -471,7 +567,10 @@ class ContractStore:
         if version < 3:
             for statement in _MIGRATION_V3:
                 connection.execute(statement)
-        for statement in _MIGRATION_V4:
+        if version < 4:
+            for statement in _MIGRATION_V4:
+                connection.execute(statement)
+        for statement in _MIGRATION_V5:
             connection.execute(statement)
         connection.execute(f"PRAGMA application_id = {_APPLICATION_ID}")
         connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
@@ -555,6 +654,13 @@ class ContractStore:
 
     def publish(self, document: dict, *, context: PublishContext) -> ContractRef:
         """Validate and atomically publish a revision, pointer and audit event."""
+        with self._transaction() as connection:
+            return self._publish(connection, document, context=context)
+
+    def _publish(
+        self, connection: sqlite3.Connection, document: dict, *, context: PublishContext
+    ) -> ContractRef:
+        """Publish under the caller's writer reservation with the same Kernel checks."""
         serialized = canonical_json(document)
         document = json.loads(serialized)
         validate_schema(document)
@@ -565,39 +671,34 @@ class ContractStore:
         predecessor = metadata["supersedes"]
         digest = _digest(serialized)
 
-        with self._transaction() as connection:
-            existing = connection.execute(
-                f"{_REVISIONS} WHERE revisions.revision_id = ?", (reference.revision_id,)
-            ).fetchone()
-            if existing is not None:
-                stored = _stored_document(existing)
-                if canonical_json(stored) != serialized:
-                    raise ConflictError("The revision ID already identifies different content.")
-                previous = (
-                    self._lookup(connection, ContractRef.from_json(predecessor))
-                    if predecessor is not None
-                    else None
-                )
-                if predecessor is not None and previous is None:
-                    raise IntegrityError("A stored revision has a missing predecessor.")
-                require_authority(document, previous, context)
-                return reference
-
-            previous = self._predecessor(connection, reference, document)
-            require_authority(document, previous, context)
-
-            def lookup(target: ContractRef) -> dict | None:
-                return self._lookup(connection, target)
-
-            validate_semantics(
-                document,
-                lookup,
-                lambda contract_id: self._active(connection, contract_id),
-                history=lambda kind, project_id: self._history(connection, kind, project_id),
-                verify_artifact=self.verify_artifact,
+        existing = connection.execute(
+            f"{_REVISIONS} WHERE revisions.revision_id = ?", (reference.revision_id,)
+        ).fetchone()
+        if existing is not None:
+            stored = _stored_document(existing)
+            if canonical_json(stored) != serialized:
+                raise ConflictError("The revision ID already identifies different content.")
+            previous = (
+                self._lookup(connection, ContractRef.from_json(predecessor))
+                if predecessor is not None
+                else None
             )
-            targets = {target.revision_id for target in iter_references(document)}
-            self._insert_revision(connection, reference, metadata, serialized, digest, targets)
+            if predecessor is not None and previous is None:
+                raise IntegrityError("A stored revision has a missing predecessor.")
+            require_authority(document, previous, context)
+            return reference
+
+        previous = self._predecessor(connection, reference, document)
+        require_authority(document, previous, context)
+        validate_semantics(
+            document,
+            lambda target: self._lookup(connection, target),
+            lambda contract_id: self._active(connection, contract_id),
+            history=lambda kind, project_id: self._history(connection, kind, project_id),
+            verify_artifact=self.verify_artifact,
+        )
+        targets = {target.revision_id for target in iter_references(document)}
+        self._insert_revision(connection, reference, metadata, serialized, digest, targets)
         return reference
 
     @staticmethod

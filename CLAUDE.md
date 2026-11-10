@@ -56,6 +56,12 @@ controls. Phase 3.0 adds [Workflow planning](docs/workflow-planning.md) and
 interfaces, mandatory verification coverage and per-document authority. A bounded
 mandate requires actual recorded approval, valid scope, actor and freshness.
 Agent output carries no authority to approve or validate product work.
+Phase 4 adds [independent Validation](docs/validation.md). Derive the matrix
+from exact approved sources and the Standard, assess method adequacy, inspect
+the retained candidate independently and publish scoped results through the
+Kernel. Preliminary engineering review, independent gates and human acceptance
+retain distinct authority. Report and experimental-build promotion remain
+later work.
 Follow the [storage migration procedure](docs/storage.md#migrating-existing-project-state)
 for each authorized project. Preserve the published bytes, approval receipts,
 evidence hashes, event order, and SQLite application and schema markers.
@@ -76,7 +82,7 @@ visibility, and licensing checks in [AGENTS.md](AGENTS.md).
 The project owner selected Mozilla Public License 2.0 (`MPL-2.0`). Preserve the
 complete [LICENSE](LICENSE), source notices/SPDX headers, packaging metadata, and
 accurate copyright and third-party notices. Never invent copyright-holder names
-or ownership transfers. Record license-related decisions. Keep Phase 3 changes
-reviewable on their dedicated branch. Merging into the default branch
+or ownership transfers. Record license-related decisions. Keep each phase
+reviewable on its authorized branch. Merging into the default branch
 requires separate authorization. Preserve the historical `phase-1-baseline` tag
 and existing commit history.
