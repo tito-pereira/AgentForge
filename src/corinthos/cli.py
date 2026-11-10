@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
-"""Minimal Phase 0 command-line interface."""
+"""Corinthos command-line entry point."""
 
 import argparse
 
@@ -9,9 +9,14 @@ from corinthos import __version__
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="corinthos",
-        description="Corinthos Core - Phase 0 technical foundation.",
+        description="Corinthos Core - contracts and human-led project negotiation.",
     )
     parser.add_argument("--version", action="version", version=f"corinthos {__version__}")
-    parser.parse_args(argv)
+    from corinthos.project_manager.cli import configure_parser
+
+    configure_parser(parser)
+    arguments = parser.parse_args(argv)
+    if hasattr(arguments, "handler"):
+        return arguments.handler(arguments)
     parser.print_help()
     return 0

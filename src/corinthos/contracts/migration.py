@@ -13,16 +13,16 @@ from hashlib import file_digest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from .artifacts import is_link
+from .artifacts import is_link, verify_artifact
 from .model import ConflictError, ContractRef, IntegrityError, StoreError, iter_references
 from .schema import validate_schema
 from .store import (
     _APPLICATION_ID,
     _REVISIONS,
     _SCHEMA_VERSION,
-    ContractStore,
     _markers,
     _stored_document,
+    _verify_database,
 )
 
 
@@ -87,8 +87,15 @@ def _check_database(database: Path) -> None:
 
 
 def _verify_snapshot(root: Path) -> None:
-    store = ContractStore(root)
-    with store._connection() as connection:
+    # A directory naming migration preserves database bytes. Opening the
+    # current ContractStore here would perform a separate SQLite upgrade.
+    database = root / ".corinthos" / "state.db"
+    uri = f"{database.as_uri()}?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True, timeout=0, autocommit=True)) as connection:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA trusted_schema = OFF")
+        connection.execute("PRAGMA foreign_keys = ON")
+        _verify_database(connection, _markers(connection)[1])
         documents = {}
         for row in connection.execute(_REVISIONS):
             document = _stored_document(row)
@@ -108,7 +115,7 @@ def _verify_snapshot(root: Path) -> None:
             else:
                 evidence = ()
             for item in evidence:
-                store.verify_artifact(item["path"], item["sha256"])
+                verify_artifact(root, item["path"], item["sha256"])
         if expected_edges != {
             tuple(row) for row in connection.execute("SELECT * FROM contract_references")
         }:
@@ -162,7 +169,8 @@ def migrate_legacy_state(project_root: str | Path) -> bool:
             connection.execute("PRAGMA foreign_keys = ON")
             connection.execute("BEGIN EXCLUSIVE")
             _check_database(database)
-            if _markers(connection) != (_APPLICATION_ID, _SCHEMA_VERSION):
+            application, version = _markers(connection)
+            if application != _APPLICATION_ID or version not in (1, _SCHEMA_VERSION):
                 raise StoreError(
                     "The legacy state database application or schema version is unsupported."
                 )

@@ -302,6 +302,45 @@ The reviewed migration pull request records the exact runtime verification and
 publication evidence. The project owner authorizes integration and Phase 2
 separately.
 
+## Phase 2 Project Manager
+
+Phase 2 starts from the integrated Phase 1.1 commit
+`c96ee0c893b1374d13fff64d4d037fb6bad50134`. Its post-merge Windows and Ubuntu
+checks each passed 161 tests before implementation. Product scope remains Core
+v0.1, PRD document revision v0.2 and package version `0.1.0`.
+
+- A terminal-independent `ProjectManager` service stores explicit structured
+  human choices. A thin CLI asks plain-language questions. An optional callable
+  may return advisory text, with no draft mutation or approval authority.
+- Deterministic checks detect shape, reference, identity, normalized scope and
+  missing-field contradictions. Semantic completeness, acceptance testability
+  and technical feasibility require human judgement and remain unverified by
+  automation. Supplied alternatives and their decisions remain inspectable.
+- SQLite version 2 adds session, turn and receipt tables to the existing state
+  database. The application ID and eight wire schemas retain their identities.
+  Verified private pre-v2 backups and transactional schema changes support
+  recovery. Published contract records remain under the Kernel's existing API.
+- A five-minute exact review contains the final approval metadata before its
+  SHA-256 is calculated, avoiding digest circularity. The foreground terminal
+  requires an unpredictable, explicit confirmation phrase. No public boolean,
+  JSON field, batch switch or assistance response authorizes publication.
+  The local account and trusted Python process define the authority boundary.
+- Session approval, Kernel publication and final receipt consumption have
+  separate transactions. Recovery holds the writer reservation while inspecting
+  the exact revision. It either reconciles an existing publication or revokes an
+  interrupted approval, preventing duplicate publications and stale consent.
+- PRR intake pins the exact published base and request. Explicit structural
+  triage opens a bounded session. Unaffected obligations and IDs are preserved.
+  Keeping, returning or deferring a request publishes no content revision.
+  User-initiated changes can create a separate revision session directly.
+
+The service, terminal, approval, migration and regression tests demonstrate
+these boundaries. Synthetic consent exists only inside labelled test fixtures.
+Workflow planning, actual Codex/Claude adapters, Change Impact Analysis,
+independent Validation, Report and product evolution require later phases.
+The [Project Manager guide](project-manager.md) provides the API, tutorial,
+state transitions and requirement-to-test traceability.
+
 ## Technical references
 
 These references were consulted for packaging, validation, lint, and CI during

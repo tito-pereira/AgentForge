@@ -83,7 +83,7 @@ and intentional legacy references.
 See the [design and traceability record](contract-kernel-design.md) for the mapping
 to approved architecture and PRD v0.2.
 
-## Phase 1.1 naming migration
+## Historical Phase 1.1 naming migration
 
 Use Corinthos for the product, repository and workspace, `corinthos-core` for
 the distribution, `corinthos` for the import and CLI, and `.corinthos/` for
@@ -96,6 +96,31 @@ The [decision log](decisions.md#phase-11-corinthos-naming-and-compatibility)
 records the name mapping and deliberate exceptions. The project owner reviews
 and authorizes the migration merge separately from Phase 2.
 
+## Phase 2.0 Project Manager
+
+Phase 2 starts from merged Phase 1.1 main
+`c96ee0c893b1374d13fff64d4d037fb6bad50134`. The original foundation and Kernel
+tests remain regression requirements. The approved scope provides structured
+human-led negotiation, durable sessions, complete reviews, explicit local
+approval and bounded intake of already published PRRs. The
+[Project Manager guide](project-manager.md#requirement-traceability) maps
+RF02/RF06/RF10 and checkpoints 2.0.A–H to concrete APIs, docs and test files.
+
+| Checkpoint | Required evidence |
+| --- | --- |
+| 2.0.A | Verified integrated baseline, service/state design and requirement traceability. |
+| 2.0.B | Usable guided CLI and separate service with ordinary-language inputs. |
+| 2.0.C | Stable classified proposals, explicit decisions and honest preliminary checks. |
+| 2.0.D | Complete exact review, local terminal challenge, trusted receipt and Kernel publication. |
+| 2.0.E | Versioned SQLite migration, restart, concurrent edits and publication recovery. |
+| 2.0.F | Exact PRR intake, bounded edits and preserved unaffected obligations. |
+| 2.0.G | Targeted tests, baseline regression, clean wheel installation and actual Windows/Ubuntu checks. |
+| 2.0.H | Independent review, exact commit/CI evidence and a human-reviewable feature PR. |
+
+Execution results and remaining limitations are recorded in the PR and
+[decision log](decisions.md). Local checks and observed remote CI retain their
+own environments and exact tested commit identities.
+
 ## Gates and the next phase
 
 Each unit has an objective, scope, interfaces, criteria, and tests proportionate
@@ -104,9 +129,9 @@ technologies, meaningful testing, accurate documentation, and readable code.
 Until Validation is implemented, automated tests and explicit technical review
 evaluate the evidence.
 
-Phase 1 publishes shared infrastructure for the six Engines. The project owner
-authorizes the merge and the start of Phase 2 separately. Project negotiation,
-execution adapters, scheduling, independent audits and report generation remain
+Phase 2 uses the shared infrastructure for human-led Project negotiation. The
+project owner authorizes its merge and the start of Phase 3 separately.
+Execution adapters, scheduling, independent audits and report generation remain
 future Engine responsibilities.
 
 Once Project Manager, Workflow, a minimal adapter, and operational persistence
@@ -117,6 +142,7 @@ operational. The Bench follows construction of the Core.
 
 - [Architecture](architecture.md)
 - [Contract catalogue](contracts.md)
+- [Project Manager guide and traceability](project-manager.md)
 - [Workflow scopes and approval rules](workflows.md)
 - [Practical decisions and historical verification](decisions.md)
 - [Contributor instructions](../AGENTS.md)

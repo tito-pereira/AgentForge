@@ -12,6 +12,7 @@ from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
+from uuid import uuid4
 
 from .artifacts import is_link, private_directory, verify_artifact
 from .authority import PublishContext, require_authority
@@ -27,7 +28,7 @@ from .schema import validate_schema
 from .semantics import validate_semantics
 
 _APPLICATION_ID = 0x4E554B59
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 _LOCK_TIMEOUT = 5.0
 _BUSY_CODES = {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
 _ACTIVE_TYPES = frozenset({"PROJECT", "WORKFLOW", "MODULE", "TECHNOLOGY_DECISION", "VALIDATION"})
@@ -83,7 +84,61 @@ _MIGRATION_V1 = (
            OR revision_id = NEW.revision_id)
        BEGIN SELECT RAISE(ABORT, 'Audit events are append-only'); END""",
 )
-_REQUIRED_TABLES = frozenset({"contracts", "revisions", "contract_references", "audit_events"})
+_MIGRATION_V2 = (
+    """CREATE TABLE pm_sessions (
+        session_id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL,
+        version INTEGER NOT NULL CHECK (version >= 1),
+        snapshot TEXT NOT NULL
+    )""",
+    """CREATE TABLE pm_turns (
+        turn_id TEXT PRIMARY KEY NOT NULL,
+        session_id TEXT NOT NULL REFERENCES pm_sessions (session_id),
+        version INTEGER NOT NULL CHECK (version >= 1),
+        actor_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        snapshot TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        UNIQUE (session_id, version)
+    )""",
+    """CREATE TABLE pm_approvals (
+        approval_id TEXT PRIMARY KEY NOT NULL,
+        session_id TEXT NOT NULL REFERENCES pm_sessions (session_id),
+        session_version INTEGER NOT NULL CHECK (session_version >= 1),
+        project_id TEXT NOT NULL,
+        revision_id TEXT NOT NULL,
+        content_sha256 TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        expires_at REAL NOT NULL,
+        consumed INTEGER NOT NULL DEFAULT 0 CHECK (consumed IN (0, 1))
+    )""",
+    """CREATE TRIGGER pm_turns_no_update BEFORE UPDATE ON pm_turns
+       BEGIN SELECT RAISE(ABORT, 'Negotiation turns are append-only'); END""",
+    """CREATE TRIGGER pm_turns_no_delete BEFORE DELETE ON pm_turns
+       BEGIN SELECT RAISE(ABORT, 'Negotiation turns are append-only'); END""",
+    """CREATE TRIGGER pm_turns_no_replace BEFORE INSERT ON pm_turns
+       WHEN EXISTS (SELECT 1 FROM pm_turns WHERE turn_id = NEW.turn_id
+           OR (session_id = NEW.session_id AND version = NEW.version))
+       BEGIN SELECT RAISE(ABORT, 'Negotiation turns are append-only'); END""",
+    """CREATE TRIGGER pm_approvals_binding BEFORE UPDATE ON pm_approvals
+       WHEN OLD.approval_id IS NOT NEW.approval_id
+         OR OLD.session_id IS NOT NEW.session_id
+         OR OLD.session_version IS NOT NEW.session_version
+         OR OLD.project_id IS NOT NEW.project_id
+         OR OLD.revision_id IS NOT NEW.revision_id
+         OR OLD.content_sha256 IS NOT NEW.content_sha256
+         OR OLD.actor_id IS NOT NEW.actor_id
+         OR OLD.expires_at IS NOT NEW.expires_at
+         OR NOT (OLD.consumed = 0 AND NEW.consumed = 1)
+       BEGIN SELECT RAISE(ABORT, 'Approval bindings are immutable and single-use'); END""",
+    """CREATE TRIGGER pm_approvals_no_delete BEFORE DELETE ON pm_approvals
+       BEGIN SELECT RAISE(ABORT, 'Approval receipts are retained'); END""",
+    """CREATE TRIGGER pm_approvals_no_replace BEFORE INSERT ON pm_approvals
+       WHEN EXISTS (SELECT 1 FROM pm_approvals WHERE approval_id = NEW.approval_id)
+       BEGIN SELECT RAISE(ABORT, 'Approval bindings are immutable and single-use'); END""",
+)
+_REQUIRED_TABLES_V1 = frozenset({"contracts", "revisions", "contract_references", "audit_events"})
+_REQUIRED_TABLES = _REQUIRED_TABLES_V1 | {"pm_sessions", "pm_turns", "pm_approvals"}
 _REVISIONS = """SELECT revisions.*, contracts.contract_type, contracts.project_id,
                 contracts.active_revision_id
                 FROM revisions JOIN contracts USING (contract_id)"""
@@ -98,6 +153,22 @@ def _markers(connection: sqlite3.Connection) -> tuple[int, int]:
         connection.execute("PRAGMA application_id").fetchone()[0],
         connection.execute("PRAGMA user_version").fetchone()[0],
     )
+
+
+def _verify_database(connection: sqlite3.Connection, version: int) -> None:
+    """Check a supported schema without upgrading or rewriting its records."""
+    if version not in (1, _SCHEMA_VERSION) or _markers(connection) != (_APPLICATION_ID, version):
+        raise StoreError("The state database application or schema version is unsupported.")
+    tables = {
+        row[0] for row in connection.execute("SELECT name FROM sqlite_schema WHERE type = 'table'")
+    }
+    required = _REQUIRED_TABLES_V1 if version == 1 else _REQUIRED_TABLES
+    if not required <= tables:
+        raise StoreError("The state database schema is incomplete.")
+    if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+        raise StoreError("The state database failed its integrity check.")
+    if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+        raise StoreError("The state database failed its foreign-key integrity check.")
 
 
 def _stored_document(row: sqlite3.Row) -> dict:
@@ -207,28 +278,36 @@ class ContractStore:
                     connection.execute("ROLLBACK")
                 raise
 
-    @staticmethod
-    def _migrate(connection: sqlite3.Connection) -> None:
+    def _migrate(self, connection: sqlite3.Connection) -> None:
         application, version = _markers(connection)
-        tables = {
-            row[0]
-            for row in connection.execute("SELECT name FROM sqlite_schema WHERE type = 'table'")
-        }
-        if application == _APPLICATION_ID and version == _SCHEMA_VERSION:
-            if not _REQUIRED_TABLES <= tables:
-                raise StoreError("The state database schema is incomplete.")
-            if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
-                raise StoreError("The state database failed its integrity check.")
-            if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
-                raise StoreError("The state database failed its foreign-key integrity check.")
-            return
-        has_objects = connection.execute("SELECT 1 FROM sqlite_schema LIMIT 1").fetchone()
-        if application != 0 or version != 0 or has_objects is not None:
-            raise StoreError("The state database application or schema version is unsupported.")
-        for statement in _MIGRATION_V1:
+        if application == _APPLICATION_ID and version in (1, _SCHEMA_VERSION):
+            _verify_database(connection, version)
+            if version == _SCHEMA_VERSION:
+                return
+            if not self.database_path.stat().st_mode & stat.S_IWUSR:
+                raise StoreError("The state database is read-only.")
+            # The write reservation prevents another constructor or publisher
+            # changing v1 while a separate read connection backs it up.
+            # Backing up the connection holding BEGIN IMMEDIATE would stall.
+            uri = f"{self.database_path.as_uri()}?mode=ro"
+            with closing(
+                sqlite3.connect(uri, uri=True, timeout=_LOCK_TIMEOUT, autocommit=True)
+            ) as source:
+                source.execute("PRAGMA trusted_schema = OFF")
+                source.execute("PRAGMA foreign_keys = ON")
+                backup = self.database_path.with_name(f"state.pre-v2-{uuid4().hex}.db")
+                self._copy_backup(source, backup, version=1)
+        else:
+            has_objects = connection.execute("SELECT 1 FROM sqlite_schema LIMIT 1").fetchone()
+            if application != 0 or version != 0 or has_objects is not None:
+                raise StoreError("The state database application or schema version is unsupported.")
+            for statement in _MIGRATION_V1:
+                connection.execute(statement)
+        for statement in _MIGRATION_V2:
             connection.execute(statement)
         connection.execute(f"PRAGMA application_id = {_APPLICATION_ID}")
         connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
+        _verify_database(connection, _SCHEMA_VERSION)
 
     @staticmethod
     def _lookup(connection: sqlite3.Connection, reference: ContractRef) -> dict | None:
@@ -444,6 +523,13 @@ class ContractStore:
         """Create a consistent private backup without replacing an existing copy."""
         backup_path = self.database_path.with_name("state.backup.db")
         with self._connection() as source:
+            self._copy_backup(source, backup_path, version=_SCHEMA_VERSION)
+        return backup_path
+
+    @staticmethod
+    def _copy_backup(source: sqlite3.Connection, backup_path: Path, *, version: int) -> None:
+        """Publish a verified SQLite backup without replacing another file."""
+        try:
             _check_database_files(backup_path, allow_existing=False)
             descriptor, temporary_name = tempfile.mkstemp(
                 prefix="state.backup-", suffix=".db", dir=backup_path.parent
@@ -472,8 +558,7 @@ class ContractStore:
                 ) as destination:
                     destination.execute("PRAGMA foreign_keys = ON")
                     source.backup(destination, pages=128, progress=check_progress, sleep=0.05)
-                    if _markers(destination) != (_APPLICATION_ID, _SCHEMA_VERSION):
-                        raise StoreError("The backup has an unsupported database schema.")
+                    _verify_database(destination, version)
                 _check_database_files(backup_path, allow_existing=False)
                 try:
                     # Both operations fail when the destination already exists.
@@ -485,4 +570,5 @@ class ContractStore:
                     raise ConflictError("A state backup already exists.") from None
             finally:
                 temporary.unlink(missing_ok=True)
-        return backup_path
+        except OSError:
+            raise StoreError("The state database backup could not be created safely.") from None
