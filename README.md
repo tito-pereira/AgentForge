@@ -8,8 +8,8 @@ different agents, initially Codex and Claude Code.
 The implementation includes the **Phase 0 foundation**, **Phase 1 Contract
 Kernel**, **Phase 2 Project Manager**, **Phase 3 Workflow + Adapters**,
 **Phase 4 Validation Engine**, **Phase 5 Report Engine** and the **Phase 6 lifecycle
-candidate**, with package version `0.1.0`. The [Phase 6 verification record](docs/phase-6-verification.md)
-separates implemented behavior from required proof that remains open.
+implementation**, with package version `0.1.0`. The [Phase 6 verification record](docs/phase-6-verification.md)
+separates observed behavior, remaining proof and the Phase 6.1 delivery exception.
 Phase 0 established English-language public
 development, clean Windows and Linux environments and MPL 2.0.
 The product target remains Core v0.1, based on product specification revision v0.2.
@@ -55,8 +55,11 @@ recovery. Validation derives independent plans and publishes scoped results
 for Workflow to consume. Report consolidates exact source facts and history.
 Phase 6 adds [delivered versions and Interactive Project Evolution](docs/evolution.md),
 with isolated cumulative builds, independent admission, session-safe promotion,
-source-bound feedback and optional exact product review. Mandatory live Claude
-Code interoperability remains unverified; full Core completion is not claimed.
+source-bound feedback and optional exact product review. The owner's Phase 6.1
+delivery exception waives the remaining pilot end-to-end and comparable live
+Claude Code proof as delivery gates; their outcomes remain incomplete/unverified.
+Full Core/PRD completion is not claimed. See the [delivery decision and remaining
+proof](docs/phase-6-verification.md#phase-61-delivery-decision).
 Natural-language consistency and technical feasibility require human review.
 
 ## Five Engineering Commandments

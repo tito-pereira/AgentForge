@@ -26,8 +26,8 @@ A local result covers its declared obligations. A product matrix also requires
 global Project requirements, constraints, success criteria and applicable
 Workflow sources. Green local tests do not discharge omitted global obligations.
 Validation assesses a milestone candidate's technical readiness. Workflow
-coordinates Build Readiness, while experimental-build promotion remains a later
-phase.
+coordinates Build Readiness; [playtest promotion](evolution.md) consumes its
+separate current admission gates.
 
 ## Derive and review a plan
 
@@ -251,5 +251,7 @@ approved criteria and methods are unchanged. Preserve each result's exact
 scope, evidence and limitations.
 
 The [Report Engine](report.md) consolidates exact plans, results and retained
-evidence into immutable ERCs. General product evolution and experimental-build
-promotion belong to later phases. Live Claude remains unverified.
+evidence into immutable ERCs. The [lifecycle guide](evolution.md) covers delivered
+versions, evolution and optional product review; the [build guide](builds.md)
+covers sealed identity, readiness and playtest admission. Live Claude remains
+unverified.

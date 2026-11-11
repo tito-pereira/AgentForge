@@ -58,11 +58,16 @@ The [verification record](phase-6-verification.md) links the executable evidence
 | Area | Current disposition |
 | --- | --- |
 | RF01–RF02 | Packaged initialization/capabilities and explicit persisted advice implemented; focused tests and working-wheel outside-checkout smoke passed. Final platform verification remains separate. |
-| RF03–RF06 | Approved milestone consumption, exact build bridge and selective reconciliation implemented/tested. The real successor milestone decision and pilot follow-through remain open. |
-| RF07 | Promotion, pins, voluntary switching, feedback and safe retention implemented; real-byte/transaction tests and independent race/reconciliation review passed. Real two-milestone pilot proof remains open. |
-| RF08 | Native versions, original delivery adoption, exact optional review and evolution-to-PM implemented/tested. Actual installed pilot baseline adoption/evolution is recorded; evolved delivery still requires the reserved milestone journey. |
-| RF09 | Lifecycle source cutoffs, readiness/session projections, typed feedback and original review history implemented/tested. Three actual installed baseline report/export bundles passed verification; successor MILESTONE/evolved bundles remain open. |
+| RF03–RF06 | Approved milestone consumption, exact build bridge and selective reconciliation implemented/tested. The real successor received genuine foreground HUMAN approval. Actual checkpoint execution, independent audits and inspected recovery are retained. The pilot source repair was reviewed and tested; fresh exact formal proof remains NOT_COMPLETED and is waived for Phase 6.1 delivery. |
+| RF07 | Promotion, pins, voluntary switching, feedback and safe retention implemented; real-byte/transaction tests and independent race/reconciliation review passed. An actual M1 Build was promoted and pinned; an M2 controller was interrupted, inspected and recovered. The remaining repaired-candidate Build/admission/promotion journey is NOT_COMPLETED and waived for Phase 6.1 delivery; runtime cumulative gates remain enforced. |
+| RF08 | Native versions, original delivery adoption, exact optional review and evolution-to-PM implemented/tested. Actual installed pilot baseline adoption/evolution is recorded. Evolved pilot delivery is NOT_COMPLETED and waived for Phase 6.1 delivery; acceptance remains NOT_REVIEWED. |
+| RF09 | Lifecycle source cutoffs, readiness/session projections, typed feedback and original review history implemented/tested. Three actual installed baseline report/export bundles passed verification. Remaining successor MILESTONE/evolved report proof is NOT_COMPLETED and waived for Phase 6.1 delivery. |
 | RF10 | v6 migration preserves genuinely populated old tables/artifacts, including unfinished v5 report recovery; populated backup/recovery and old-version regressions exercised. |
-| M1–M5 | Bounded design, existing technologies, meaningful security/restart tests, English guides and independent review retained. Clean-wheel Windows verification passed; final CI/Graphify results are linked from the PR and delivery record. |
-| Native interoperability | Real Codex artifact checks passed, but protocol completion timed out. Claude Code access is absent. Mandatory comparable proof remains OPEN. |
-| Delivery authority | Draft/incomplete PR required while mandatory proof is absent; no Phase 6 merge authorization or genuine acceptance is inferred. |
+| M1–M5 | Bounded design, existing technologies, meaningful security/restart tests, English guides and independent review retained. Exact runtime commit 7d568f55 passed clean-wheel CI with 618 Windows tests and 616 plus two Windows-only skips on Ubuntu. The pilot title-domain defect was repaired and checked in the separate pilot source; it is not an unresolved Core blocker. Final documentation-head CI/Graphify remain separately attributable. |
+| Native interoperability | Real Codex artifact checks passed, but protocol completion timed out. Claude Code access is absent; comparable live proof remains NOT_VERIFIED and is waived for Phase 6.1 delivery. |
+| Delivery authority | Phase 6.1 permits engineering delivery and PR readiness after the required review/checks, with the proof gaps explicitly retained. The owner separately authorized PR #9 integration after those checks. Neither the waiver nor integration establishes full Core/PRD completion or human acceptance. |
+
+The [Phase 6.1 delivery decision](phase-6-verification.md#phase-61-delivery-decision)
+supersedes the original delivery-blocker disposition, without rewriting the initial
+matrix or historical results. A future real field test is outside this delivery
+gate. Bench, GUI and SaaS remain out of scope.

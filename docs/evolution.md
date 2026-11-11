@@ -3,8 +3,11 @@
 Phase 6 connects the existing Engines through three operational tables, not new
 contract types. Approved Project, Workflow, Module and Technology Decision
 contracts remain authoritative. See [builds](builds.md), [design](phase-6-design.md)
-and [coverage](phase-6-coverage.md). Mandatory live Claude Code interoperability
-is unavailable in the current environment; full Core readiness is not claimed.
+and [coverage](phase-6-coverage.md). The owner's [Phase 6.1 delivery
+exception](phase-6-verification.md#phase-61-delivery-decision) waives remaining
+pilot end-to-end and comparable live Claude Code proof as delivery gates, with
+their incomplete/unverified outcomes preserved. The operational gates below
+remain enforced; full Core/PRD completion is not claimed.
 
 ## Installed starting point
 

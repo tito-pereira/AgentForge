@@ -112,8 +112,13 @@ Phase 6 follows the [lifecycle guide](docs/evolution.md) and
 [build guide](docs/builds.md). Preserve immutable versions and observation origins,
 verified complete build identity, non-circular checkpoint/readiness/Validation
 stages, one project tracker/active build and inspected session pins. Keep genuine
-human consent distinct from operator and synthetic observations. Missing mandatory
-native proof remains open; use an incomplete/draft PR until verified.
+human consent distinct from operator and synthetic observations. The owner's
+Phase 6.1 delivery exception waives the remaining pilot end-to-end proof and
+comparable live Claude Code proof as delivery gates. Keep those outcomes
+`NOT_COMPLETED` / `NOT_VERIFIED`, and acceptance `NOT_REVIEWED`; the exception
+does not satisfy runtime Validation or promotion gates. PR readiness depends on
+the authorized engineering checks, not completion of waived proof. The future
+field test is outside this delivery gate; Bench, GUI and SaaS remain out of scope.
 
 The initial validator is
 `corinthos.standard.load_standard(policy_path, schema_path)`. It accepts explicit

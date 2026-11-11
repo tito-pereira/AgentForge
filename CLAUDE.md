@@ -67,8 +67,12 @@ separate technical/delivery/availability/acceptance states. Normal reports need
 no new human consent. Phase 6 implements [versioned evolution](docs/evolution.md)
 and [sealed builds](docs/builds.md), independent admission and session-safe
 promotion. Preserve exact candidate identity, cumulative scope, immutable feedback
-origins and inspected pins. Missing mandatory native evidence remains explicitly
-unverified; it does not establish full Core readiness.
+origins and inspected pins. The owner's Phase 6.1 delivery exception waives the
+remaining pilot end-to-end proof and comparable live Claude Code proof as delivery
+gates. Preserve `NOT_COMPLETED` / `NOT_VERIFIED` and acceptance `NOT_REVIEWED`;
+do not infer runtime Validation, promotion or full Core/PRD completion. PR readiness
+depends on the authorized engineering checks. The future field test is outside
+this delivery gate; Bench, GUI and SaaS remain out of scope.
 Follow the [storage migration procedure](docs/storage.md#migrating-existing-project-state)
 for each authorized project. Preserve the published bytes, approval receipts,
 evidence hashes, event order, and SQLite application and schema markers.

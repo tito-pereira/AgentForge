@@ -59,27 +59,58 @@ mutation during delivery, missing public readiness/session projections and the
 original-delivery evolution gap. Regression tests bind the relevant boundaries.
 Review is an engineering assessment, separate from formal Validation or acceptance.
 
-## Real pilot preparation and open proof
+The actual installed pilot exposed one further Core boundary: compound evidence
+needed the original source commit while a packaged Build correctly retained its
+full sealed, no-Git identity. The correction resolves the owned verified manifest
+and keeps source identity separate from Build identity. Regressions reject raw
+source relabelling, invented Build IDs, untrusted source files and manifest edits.
+At exact runtime commit `7d568f5546a6d7538a82a345985279fecfcb98c1`,
+[CI run 43070750375](https://github.com/tito-pereira/Corinthos/actions/runs/43070750375)
+passed **618 tests on Windows CPython 3.12.10** and **616 with two Windows-only
+skips on Ubuntu CPython 3.12.16**, including clean-wheel, installed bootstrap,
+dependency, CLI, formatting and supported-shell checks. Those results belong to
+that exact runtime commit; later documentation commits require their own CI.
+
+## Real pilot execution
 
 A consistent SQLite-supported copy preserves the original task manager's twenty
 v5 tables, prior approvals/audits/reports and all 323 artifact files present at
 copy time. The earlier 310 count described an older retained set. Original source
 and database hashes were verified unchanged; the daily app/database were not used.
 
-Two actual in-scope defects were reproduced in the isolated copy:
+Three actual in-scope pilot defects were reproduced in the isolated copy:
 
 - Terminal controls in accepted text reached CLI output. Three new checks failed
   before repair; 23 baseline/new tests passed after the bounded presentation fix.
 - Destination sidecars appearing during backup/restore validation were missed at
   publication. All six operation/sidecar cases failed before repair; all 24
   cumulative tests passed after the final collision recheck.
+- Copy validation accepted an integrity-valid embedded-NUL title despite the
+  documented title-domain rule. The new regression genuinely failed for backup
+  and restore before repair. Reusing the existing field validator fixed both;
+  all 25 pilot tests passed, with source bytes preserved and no destination,
+  sidecar or staging publication on rejection. The finding concerns documented
+  domain consistency, not an invented explicit ban in the Project's R1 wording.
 
 These repair implementation obligations without changing the Project, Module or
-Technology Decision contracts. A coherent two-milestone Workflow successor is
-frozen for genuine foreground HUMAN review. No receipt or publication was
-fabricated. The actual two-candidate build/audit/session/recovery demonstration
-under that successor remains open until its reserved milestone decision occurs.
-Passing repair tests alone is not milestone Validation or product acceptance.
+Technology Decision contracts. The coherent two-milestone Workflow successor
+received genuine foreground HUMAN approval and was published through the trusted
+bridge. No receipt was fabricated. Actual native checkpoint attempts, separate
+technical reviews and independent scoped Validation followed. The CLI checkpoint
+also retains a real timeout and its separately inspected checks-only recovery;
+successful recovery does not relabel that native timeout.
+
+The first packaged Build was independently validated, promoted once and pinned
+by an actual isolated session. The second retained a controlled failed readiness
+check, blocked promotion, an interrupted readiness controller, inspected public
+recovery and a fresh successful readiness run. Its final Product audit then
+correctly blocked two documentation-completeness criteria after discovery of the
+title-domain defect. Earlier consumed observations and both sealed candidates
+remain immutable history. The ordinary repair uses the same approved Workflow
+with a reconciled execution and no carried checkpoint completions; fresh exact
+proof is required before its promotion or delivery. Cumulative admission also
+consumes the ancestor milestone plan at the successor Build identity. Passing
+repair tests alone is not milestone Validation or product acceptance.
 
 The installed CLI adopted the verified original `0.1.0` delivery into native
 version history with its original commit/snapshot identity and unchanged prior
@@ -87,7 +118,9 @@ Product VRC. It created an operational evolution request without a gratuitous
 Project revision. Actual baseline PRODUCT, HISTORY and EVOLUTION report bundles
 were generated, published, exported and verified. They retain `NOT_REVIEWED` and
 describe the preserved baseline/proposal, not an approved or tested successor.
-No new pilot BUILD or formal Validation run was created before milestone approval.
+At that earlier cutoff no new pilot Build or formal Validation run had been
+created before milestone approval. Later pilot execution is recorded separately
+above; it does not rewrite the preserved baseline reports.
 
 ## Native interoperability
 
@@ -101,9 +134,31 @@ tests passed. Both runs reached their 180-second adapter limit with confirmed
 cleanup before a terminal completion event. Native status remains `TIMEOUT` and
 `verified_task_result=false`; successful artifact checks do not change that fact.
 
-The owner has Claude Free and no Claude Code access. Claude was not invoked and
-remains `NOT_VERIFIED`; no subscription/account change or substitute mock was used.
-The mandatory comparable native proof remains incomplete. Full Core/PRD completion
-and ready-for-review status are therefore not established. The Phase 6 PR must
-remain draft/incomplete; integration requires separate authorization. Optional
-human feedback/acceptance remain `NOT_REVIEWED` and are not mandatory blockers.
+The owner has no Claude Code access. Claude was not invoked and remains
+`NOT_VERIFIED`; no subscription/account change or substitute mock was used.
+Comparable native proof remains incomplete. The initial Phase 6 delivery gate
+therefore left the PR draft/incomplete; the Phase 6.1 decision below supersedes
+that delivery-blocker disposition. Full Core/PRD completion is not established.
+Optional human feedback/acceptance remain `NOT_REVIEWED`.
+
+## Phase 6.1 delivery decision
+
+The owner explicitly waived the remaining real-pilot end-to-end proof and
+comparable live Claude Code proof as gates for this engineering delivery. The
+remaining pilot formal Validation, repaired Build/readiness/admission/promotion,
+evolved delivery and final report journey remain `NOT_COMPLETED`; comparable
+live Claude Code proof remains `NOT_VERIFIED`. The separate pilot title-domain
+repair and its 25 passing tests do not complete those journeys. That repaired
+pilot defect is not an unresolved Core defect.
+
+The waiver changes delivery eligibility, not evidence or runtime authority.
+Historical blocked/timeout outcomes, sealed candidates and source identities
+remain intact. Runtime Build, Validation, promotion and version-delivery gates
+remain enforced; no missing proof is converted to a pass. Human acceptance stays
+`NOT_REVIEWED`, and full Core/PRD completion is not claimed. A future real field
+test is outside this delivery gate. Bench, GUI and SaaS remain out of scope.
+
+PR #9 may leave draft after the bounded technical review and required checks.
+The owner separately authorized its merge once those checks complete. The exact
+final documentation commit, its CI and subsequent integration must be recorded
+from their actual results; the runtime CI above does not attest to a later head.

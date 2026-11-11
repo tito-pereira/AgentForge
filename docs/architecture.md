@@ -31,8 +31,11 @@ The [lifecycle layer](evolution.md) reuses these Engine boundaries. Workflow own
 sealed cumulative candidates, readiness, promotion, sessions and feedback routing;
 Validation independently evaluates complete candidate identities. PM owns optional
 product review and changed requirements; REPORT publishes exact ERCs through the
-Kernel. Shared v6 records/events preserve origins and historical state. Mandatory
-native Claude Code proof remains open, so full Core readiness is not claimed.
+Kernel. Shared v6 records/events preserve origins and historical state. Remaining
+pilot end-to-end and comparable live Claude Code proof are waived as delivery
+gates by the owner's [Phase 6.1 decision](phase-6-verification.md#phase-61-delivery-decision).
+Their incomplete/unverified outcomes remain explicit; full Core/PRD completion
+is not claimed.
 
 Project Manager negotiates global intent. Workflow coordinates corrections.
 Validation returns findings to Workflow, and Report references the source records.
