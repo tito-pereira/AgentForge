@@ -6,8 +6,8 @@ verification. It aims to preserve engineering standards when working with
 different agents, initially Codex and Claude Code.
 
 The implementation includes the **Phase 0 foundation**, **Phase 1 Contract
-Kernel**, **Phase 2 Project Manager** and **Phase 3 Workflow + Adapters**, with
-package version `0.1.0`.
+Kernel**, **Phase 2 Project Manager**, **Phase 3 Workflow + Adapters** and
+**Phase 4 Validation Engine**, with package version `0.1.0`.
 Phase 0 established English-language public
 development, clean Windows and Linux environments and MPL 2.0.
 The product target remains Core v0.1, based on product specification revision v0.2.
@@ -41,12 +41,15 @@ Earlier names and execution evidence are recorded in [decisions](docs/decisions.
   preliminary technical review, fenced workspace leases and inspected recovery.
 - Conservative revision reconciliation and bounded structural requests routed
   through the real Kernel and Project Manager.
+- Independent scoped Validation planning, exact reviewed procedures, durable
+  evidence-backed runs and formal gate consumption.
 
 The six Engines use the same kernel. Project Manager provides human-led structured
 negotiation. Adapter Manager has separate Codex and Claude provider boundaries.
 Workflow supports engineering planning, sequential execution and inspected
-recovery. Independent Validation runners, Report and experimental-build promotion
-remain subsequent Engine work.
+recovery. Validation derives independent plans and publishes scoped results
+for Workflow to consume. Report and experimental-build promotion remain
+subsequent work.
 Natural-language consistency and technical feasibility require human review.
 
 ## Five Engineering Commandments
@@ -169,9 +172,9 @@ When ready, choose **Approve at the local terminal**. Read the complete fresh
 review and type its exact random `APPROVE` challenge to publish that specification.
 Other answers defer publication. Approval requires a foreground local terminal.
 Piped scripts can prepare drafts but cannot provide production approval. The
-published Project Contract describes what should be built, while execution and
-independent validation belong to later Engines. Feasibility and natural-language
-consistency remain explicit human review responsibilities.
+published Project Contract describes what should be built. Workflow coordinates
+execution and Validation independently assesses the candidate. Feasibility and
+natural-language consistency remain explicit human review responsibilities.
 
 The [Project Manager guide](docs/project-manager.md) covers every command,
 negotiation states, exact approval, recovery, revision requests and the Python API.
@@ -229,6 +232,23 @@ Published independent gates remain mandatory when applicable.
 The [execution and reconciliation guide](docs/workflow-execution.md) covers
 native Windows executable selection, commands, leases, review, recovery,
 preserved evidence and bounded Project Revision Requests.
+
+## Independently validate a candidate
+
+Derive a scoped Verification Matrix from the approved Project, Standard and
+applicable source contracts. Inspect the draft, bind and review each method in
+the foreground terminal, then publish and run the exact plan.
+
+```text
+corinthos validation --root PROJECT_ROOT plan PROJECT_ID --scope PRODUCT --policy STANDARD_YAML --policy-schema STANDARD_SCHEMA
+corinthos validation --root PROJECT_ROOT show-draft DRAFT_ID
+corinthos validation --root PROJECT_ROOT bind DRAFT_ID CHECK_ID --evaluator EVALUATOR_ID
+corinthos validation --root PROJECT_ROOT publish DRAFT_ID --evaluator EVALUATOR_ID
+corinthos validation --root PROJECT_ROOT run PLAN_ID --candidate CANDIDATE_DIR --evaluator EVALUATOR_ID
+```
+
+The [Validation guide](docs/validation.md) covers evidence, evaluator separation,
+formal gate expectations, inspection, recovery and revalidation.
 
 ## Standard validation
 
@@ -315,6 +335,7 @@ release. Actual results and outstanding limits remain tied to their evidence.
 - [Project Manager tutorial, approval and service API](docs/project-manager.md)
 - [Workflow planning and exact approval](docs/workflow-planning.md)
 - [Execution, recovery and revision reconciliation](docs/workflow-execution.md)
+- [Independent Validation and formal gates](docs/validation.md)
 - [Adapter Manager capabilities and verification](docs/adapters.md)
 - [SQLite storage and recovery](docs/storage.md)
 - [Phase 3 installed-wheel and native verification](docs/phase-3-verification.md)

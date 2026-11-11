@@ -7,7 +7,7 @@ from datetime import datetime
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
-from .model import ContractRef, IntegrityError, iter_references
+from .model import ConflictError, ContractRef, IntegrityError, iter_references
 
 type Document = dict[str, Any]
 type Lookup = Callable[[ContractRef], Document | None]
@@ -546,14 +546,14 @@ def _workflow_scope(
     )
 
 
-def _validation(payload: Document, context: _Context) -> None:
-    scope = payload["validation_scope"]
+def _validation_obligations(
+    scope: Document, sources: set[ContractRef], context: _Context
+) -> tuple[dict[ObligationKey, Document], dict[ObligationKey, Document]]:
     level = scope["level"]
     target_ids = set(scope["target_ids"])
     target_ref = ContractRef.from_json(scope["target_contract_ref"])
     target_types = {"PRODUCT": "PROJECT", "MODULE": "MODULE"}
     target = context.resolve(target_ref, target_types.get(level, "WORKFLOW"))
-    sources = {ContractRef.from_json(raw) for raw in payload["source_contract_refs"]}
     _require_subset([target_ref], sources, "validation scope source")
     project_refs = [reference for reference in sources if reference.contract_type == "PROJECT"]
     if len(project_refs) != 1:
@@ -561,9 +561,6 @@ def _validation(payload: Document, context: _Context) -> None:
     project_ref = project_refs[0]
     project = context.resolve(project_ref, "PROJECT")
     context.require_active(project)
-    expected_gate = {"PRODUCT": "PRODUCT_VALIDATION", "PLAYTEST_MILESTONE": "PLAYTEST_READINESS"}
-    if payload["gate_policy"]["gate"] != expected_gate.get(level, "CHECKPOINT"):
-        raise IntegrityError("Validation gate does not match the declared scope.")
     if level == "PRODUCT" and (target_ref != project_ref or target_ids != {context.project_id}):
         raise IntegrityError("Product validation must bind to the approved project identity.")
     if level == "PRODUCT":
@@ -585,10 +582,12 @@ def _validation(payload: Document, context: _Context) -> None:
     if level == "MODULE" and target_ids != {target["payload"]["module_id"]}:
         raise IntegrityError("Module validation target differs from its exact Module Contract.")
 
-    required: set[ObligationKey] = {(None, identifier) for identifier in _COMMANDMENTS}
-    optional: set[ObligationKey] = set()
-    module_checks: dict[ObligationKey, Document] = {}
-    project_ids = set(_project_items(project["payload"])) if level == "PRODUCT" else set()
+    required: dict[ObligationKey, Document] = {
+        (None, identifier): {} for identifier in _COMMANDMENTS
+    }
+    optional: dict[ObligationKey, Document] = {}
+    project_items = _project_items(project["payload"])
+    project_ids = set(project_items) if level == "PRODUCT" else set()
     expected_modules = {target_ref} if level == "MODULE" else set()
     requirement_ids = set()
     expected_technologies = set()
@@ -605,7 +604,9 @@ def _validation(payload: Document, context: _Context) -> None:
             modules, requirements, criteria = _workflow_scope(workflow, level, target_ids, context)
             expected_modules.update(modules)
             requirement_ids.update(requirements)
-            required.update((reference, identifier) for identifier in criteria)
+            required.update(
+                {(reference, identifier): item for identifier, item in criteria.items()}
+            )
         elif reference.contract_type == "MODULE":
             module = context.resolve(reference, "MODULE")["payload"]
             _module_project_items(module, context, project)
@@ -619,13 +620,15 @@ def _validation(payload: Document, context: _Context) -> None:
             )
             for identifier, check in _module_checks(module).items():
                 key = (reference, identifier)
-                module_checks[key] = check
-                (required if check["blocking"] else optional).add(key)
+                (required if check["blocking"] else optional)[key] = check
         elif reference.contract_type == "TECHNOLOGY_DECISION":
             decision = context.resolve(reference, "TECHNOLOGY_DECISION")["payload"]
             _decision_drivers(decision, context, project)
             required.update(
-                (reference, item["criterion_id"]) for item in decision["verification_criteria"]
+                {
+                    (reference, item["criterion_id"]): item
+                    for item in decision["verification_criteria"]
+                }
             )
         elif reference.contract_type != "PROJECT":
             raise IntegrityError("Validation source is not an approved obligation contract type.")
@@ -635,7 +638,108 @@ def _validation(payload: Document, context: _Context) -> None:
     for requirement in project["payload"]["requirements"]:
         if requirement["requirement_id"] in project_ids:
             project_ids.update(item["criterion_id"] for item in requirement["acceptance_criteria"])
-    required.update((project_ref, identifier) for identifier in project_ids)
+    required.update(
+        {(project_ref, identifier): project_items[identifier] for identifier in project_ids}
+    )
+    return required, optional
+
+
+def validation_gate(level: str) -> str:
+    """Map a schema-defined Validation scope to its technical gate."""
+    return {
+        "MODULE": "CHECKPOINT",
+        "INTEGRATION": "CHECKPOINT",
+        "CHECKPOINT": "CHECKPOINT",
+        "PLAYTEST_MILESTONE": "PLAYTEST_READINESS",
+        "PRODUCT": "PRODUCT_VALIDATION",
+    }[level]
+
+
+def require_validation_interfaces(
+    sources: Iterable[Document], lookup: Lookup, active: Active
+) -> None:
+    """Require current providers to retain the exact terms consumed by scoped modules."""
+    for source in sources:
+        module = ContractRef.from_document(source)
+        if module.contract_type != "MODULE":
+            continue
+        for consumer in source["payload"]["consumed_interfaces"]:
+            reference = ContractRef.from_json(consumer["provider_contract_ref"])
+            if reference.contract_type != "MODULE" or reference.project_id != module.project_id:
+                raise IntegrityError(
+                    "A consumed Validation interface has the wrong provider scope."
+                )
+            original = lookup(reference)
+            provider_id = consumer["provider_module_id"]
+            if (
+                original is None
+                or ContractRef.from_document(original) != reference
+                or original["payload"]["module_id"] != provider_id
+            ):
+                raise IntegrityError("The exact consumed Validation provider is unavailable.")
+            key = (consumer["interface_id"], consumer["required_interface_revision"])
+            terms = _interfaces(original["payload"]).get(key)
+            if terms is None:
+                raise IntegrityError("The exact consumed Validation interface is unavailable.")
+            current = active(reference.contract_id)
+            if (
+                current is None
+                or current["metadata"]["contract_type"] != "MODULE"
+                or current["metadata"]["project_id"] != module.project_id
+                or current["metadata"]["contract_id"] != reference.contract_id
+                or current["payload"]["module_id"] != provider_id
+                or _interfaces(current["payload"]).get(key) != terms
+            ):
+                raise ConflictError(
+                    "The current provider no longer preserves the consumed Validation interface."
+                )
+
+
+def derive_validation_obligations(
+    project_ref: ContractRef,
+    scope: Document,
+    lookup: Lookup,
+    active: Active,
+    *,
+    history: History,
+) -> tuple[set[ContractRef], dict[ObligationKey, Document], dict[ObligationKey, Document]]:
+    """Select exact scoped sources and derive obligations by the publication rules."""
+    context = _Context(project_ref.project_id, "", "", "", lookup, active, history, lambda *_: None)
+    context.require_active(context.resolve(project_ref, "PROJECT"))
+    level = scope["level"]
+    target_ref = ContractRef.from_json(scope["target_contract_ref"])
+    sources = {project_ref, target_ref}
+    if level == "PRODUCT":
+        workflows = [
+            workflow
+            for identifier in {
+                document["metadata"]["contract_id"]
+                for document in history("WORKFLOW", project_ref.project_id)
+            }
+            if (workflow := active(identifier)) is not None
+        ]
+    elif level != "MODULE":
+        workflows = [context.resolve(target_ref, "WORKFLOW")]
+    else:
+        workflows = []
+    for workflow in workflows:
+        sources.add(ContractRef.from_document(workflow))
+        module_refs, _, _ = _workflow_scope(workflow, level, set(scope["target_ids"]), context)
+        sources.update(module_refs)
+    for reference in tuple(sources):
+        if reference.contract_type == "MODULE":
+            module = context.resolve(reference, "MODULE")["payload"]
+            sources.update(ContractRef.from_json(raw) for raw in module["technology_decision_refs"])
+    required, optional = _validation_obligations(scope, sources, context)
+    return sources, required, optional
+
+
+def _validation(payload: Document, context: _Context) -> None:
+    scope = payload["validation_scope"]
+    if payload["gate_policy"]["gate"] != validation_gate(scope["level"]):
+        raise IntegrityError("Validation gate does not match the declared scope.")
+    sources = {ContractRef.from_json(raw) for raw in payload["source_contract_refs"]}
+    required, optional = _validation_obligations(scope, sources, context)
     covered = set()
     for item in _index(payload["verification_matrix"], "check_id", "validation check").values():
         key = _obligation_key(item["source_ref"])
@@ -645,8 +749,8 @@ def _validation(payload: Document, context: _Context) -> None:
             )
         if key in required and item["gate_classification"] != "MANDATORY":
             raise IntegrityError("Validation cannot downgrade a mandatory obligation.")
-        if key in module_checks:
-            check = module_checks[key]
+        if key[0] is not None and key[0].contract_type == "MODULE":
+            check = required[key] if key in required else optional[key]
             _require_subset(
                 [item["verification_method"]], check["verification_methods"], "verification method"
             )
@@ -654,7 +758,7 @@ def _validation(payload: Document, context: _Context) -> None:
                 check["evidence_required"], item["required_evidence"], "required evidence kind"
             )
         covered.add(key)
-    if not required.issubset(covered):
+    if not required.keys() <= covered:
         raise IntegrityError("Validation matrix omits mandatory scoped obligations.")
 
 

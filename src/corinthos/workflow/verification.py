@@ -15,7 +15,7 @@ from time import monotonic
 from corinthos.adapters.process_control import start_process
 from corinthos.contracts import ContractRef, IntegrityError, validate_schema
 from corinthos.contracts.artifacts import is_link, private_directory
-from corinthos.contracts.model import canonical_json
+from corinthos.contracts.model import ID_PATTERN, canonical_json
 from corinthos.contracts.semantics import validate_semantics
 
 
@@ -37,6 +37,71 @@ class RequiredGate:
     target_ref: ContractRef
 
 
+_AUDIT_SCOPES = {
+    "MODULE": ("MODULE", "CHECKPOINT"),
+    "INTEGRATION": ("WORKFLOW", "CHECKPOINT"),
+    "CHECKPOINT": ("WORKFLOW", "CHECKPOINT"),
+    "PLAYTEST_MILESTONE": ("WORKFLOW", "PLAYTEST_READINESS"),
+    "PRODUCT": ("PROJECT", "PRODUCT_VALIDATION"),
+}
+
+
+def _managed_plan(plan):
+    return any(
+        item.startswith("bindings-sha256:")
+        for item in plan["payload"]["execution_plan"]["procedures"]
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class AuditExpectation:
+    """An exact formal scope whose plan can be published after configuration."""
+
+    level: str
+    target_ref: ContractRef
+    scope: tuple[str, ...]
+
+    def __post_init__(self):
+        if (
+            not isinstance(self.level, str)
+            or self.level not in _AUDIT_SCOPES
+            or not isinstance(self.target_ref, ContractRef)
+            or self.target_ref.contract_type != _AUDIT_SCOPES[self.level][0]
+            or not isinstance(self.scope, (list, tuple))
+            or not self.scope
+            or not all(isinstance(item, str) and ID_PATTERN.fullmatch(item) for item in self.scope)
+            or len(set(self.scope)) != len(self.scope)
+        ):
+            raise IntegrityError(
+                "A formal audit needs an exact target and valid scoped identifiers."
+            )
+        object.__setattr__(self, "scope", tuple(sorted(self.scope)))
+
+    @property
+    def gate(self):
+        return _AUDIT_SCOPES[self.level][1]
+
+    def to_json(self):
+        return {
+            "level": self.level,
+            "target_ref": self.target_ref.to_json(),
+            "scope": list(self.scope),
+        }
+
+    @classmethod
+    def from_json(cls, value):
+        if type(value) is not dict or set(value) != {"level", "target_ref", "scope"}:
+            raise IntegrityError("A stored audit expectation has an invalid structure.")
+        return cls(value["level"], ContractRef.from_json(value["target_ref"]), value["scope"])
+
+    @classmethod
+    def from_plan(cls, plan):
+        scope = plan["payload"]["validation_scope"]
+        return cls(
+            scope["level"], ContractRef.from_json(scope["target_contract_ref"]), scope["target_ids"]
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class CheckpointSpec:
     checkpoint_id: str
@@ -45,6 +110,7 @@ class CheckpointSpec:
     allowed_paths: tuple[str, ...]
     review_items: tuple[str, ...] = ()
     required_gates: tuple[RequiredGate, ...] = ()
+    audit_expectations: tuple[AuditExpectation, ...] = ()
 
     def to_json(self):
         value = asdict(self)
@@ -59,6 +125,10 @@ class CheckpointSpec:
                 target_ref=gate.target_ref.to_json(),
                 scope=list(gate.scope),
             )
+        if self.audit_expectations:
+            value["audit_expectations"] = [item.to_json() for item in self.audit_expectations]
+        else:
+            del value["audit_expectations"]
         return value
 
     @classmethod
@@ -81,6 +151,7 @@ class CheckpointSpec:
                 )
                 for gate in value["required_gates"]
             ),
+            tuple(AuditExpectation.from_json(item) for item in value.get("audit_expectations", ())),
         )
 
 
@@ -152,6 +223,11 @@ def _digest_file(path):
 
 def workspace_snapshot(root):
     """Hash source files while excluding local state, environments and generated caches."""
+    root = Path(root)
+    git_metadata = root / ".git"
+    git_root = os.path.lexists(git_metadata)
+    if git_root and is_link(git_metadata.lstat()):
+        raise IntegrityError("A source snapshot cannot use linked Git metadata.")
     files = {}
     for parent, directories, filenames in os.walk(root, followlinks=False):
         current = Path(parent)
@@ -180,28 +256,34 @@ def workspace_snapshot(root):
             kept.append(name)
         directories[:] = kept
         for name in sorted(filenames):
-            if name.endswith((".pyc", ".pyo")):
+            if name.endswith((".pyc", ".pyo")) or (
+                current == root and (current / name) == git_metadata
+            ):
                 continue
             path = current / name
             files[path.relative_to(root).as_posix()] = _digest_file(path)
             if len(files) > 10_000:
                 raise IntegrityError("The workspace exceeds the bounded source inventory limit.")
     identity = {"snapshot_id": sha256(canonical_json(files).encode("utf-8")).hexdigest()}
+    if not git_root:
+        return {"artifact_identity": identity, "files": files}
     try:
         result = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel", "HEAD"],
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             timeout=5,
         )
-        commit = result.stdout.decode("ascii").strip()
+        lines = result.stdout.decode("utf-8").splitlines()
         if (
             result.returncode == 0
-            and len(commit) == 40
-            and all(char in "0123456789abcdef" for char in commit)
+            and len(lines) == 2
+            and Path(lines[0]).resolve() == root.resolve()
+            and len(lines[1]) == 40
+            and all(char in "0123456789abcdef" for char in lines[1])
         ):
-            identity["commit"] = commit
+            identity["commit"] = lines[1]
     except (OSError, UnicodeError, subprocess.TimeoutExpired):
         pass
     return {"artifact_identity": identity, "files": files}
@@ -342,25 +424,140 @@ class ValidationGateConsumer:
             and row["revision_id"] != exclude
         ]
 
-    def applicable(self, workflow_ref, checkpoint_id):
-        references = {}
-        for document in self._history("VALIDATION", workflow_ref.project_id):
-            active = self.store.resolve_active(document["metadata"]["contract_id"])
-            if active is None:
-                continue
-            payload = active["payload"]
-            scope = payload["validation_scope"]
-            if (
-                payload["gate_policy"]["gate"] == "CHECKPOINT"
-                and scope["level"] == "CHECKPOINT"
-                and scope["target_contract_ref"] == workflow_ref.to_json()
-                and checkpoint_id in scope["target_ids"]
+    def scope_allowed(self, workflow, checkpoint_id, expectation):
+        """Bind a formal scope at the first checkpoint that contains its prerequisites."""
+        payload = workflow["payload"]
+        reference = ContractRef.from_document(workflow)
+        target = expectation.target_ref
+        scope = set(expectation.scope)
+        if expectation.level == "PRODUCT":
+            return target == ContractRef.from_json(payload["project_contract_ref"]) and scope == {
+                reference.project_id
+            }
+        checkpoints = {row["checkpoint_id"]: row for row in payload["checkpoints"]}
+        if expectation.level == "MODULE":
+            modules = {
+                row["module_id"]
+                for row in payload["modules"]
+                if ContractRef.from_json(row["module_contract_ref"]) == target
+            }
+            if not modules or scope != modules:
+                return False
+            needed = {
+                identifier
+                for identifier, row in checkpoints.items()
+                if modules.intersection(row["module_ids"])
+            }
+        elif target != reference:
+            return False
+        elif expectation.level == "CHECKPOINT":
+            needed = scope
+        elif expectation.level == "PLAYTEST_MILESTONE":
+            milestones = {row["milestone_id"]: row for row in payload["playtest_milestones"]}
+            if not scope <= milestones.keys():
+                return False
+            selected = _dependency_closure(milestones, scope)
+            needed = {
+                identifier
+                for milestone in selected
+                for identifier in milestones[milestone]["required_checkpoint_ids"]
+            }
+        else:
+            modules = {row["module_id"]: row for row in payload["modules"]}
+            interfaces = {}
+            for module_id, row in modules.items():
+                module = self.store.get(ContractRef.from_json(row["module_contract_ref"]))
+                if module is None:
+                    raise IntegrityError("An exact integration Module Contract is missing.")
+                terms = module["payload"]
+                for interface in (*terms["provided_interfaces"], *terms["consumed_interfaces"]):
+                    interfaces.setdefault(interface["interface_id"], set()).add(module_id)
+            if scope & modules.keys() & interfaces.keys() or not scope <= (
+                modules.keys() | interfaces.keys()
             ):
-                reference = ContractRef.from_document(active)
-                references[reference] = RequiredGate(
-                    reference, None, "CHECKPOINT", tuple(scope["target_ids"]), workflow_ref
-                )
-        return list(references.values())
+                return False
+            selected = scope & modules.keys()
+            for interface_id in scope & interfaces.keys():
+                selected.update(interfaces[interface_id])
+            needed = {
+                identifier
+                for identifier, row in checkpoints.items()
+                if selected.intersection(row["module_ids"])
+            }
+        if checkpoint_id not in checkpoints or not needed:
+            return False
+        available = _dependency_closure(checkpoints, (checkpoint_id,))
+        return needed <= available and not any(
+            needed <= _dependency_closure(checkpoints, (dependency,))
+            for dependency in checkpoints[checkpoint_id]["depends_on"]
+        )
+
+    def _active_plans(self, project_id):
+        identifiers = dict.fromkeys(
+            row["contract_id"]
+            for row in self.store.list_events()
+            if row["contract_type"] == "VALIDATION" and row["project_id"] == project_id
+        )
+        for identifier in identifiers:
+            active = self.store.resolve_active(identifier)
+            if active is not None:
+                yield active
+
+    def requirements(self, workflow_ref, checkpoint_id, spec=None, *, retained=()):
+        workflow = self.store.get(workflow_ref)
+        if workflow is None or workflow_ref.contract_type != "WORKFLOW":
+            raise IntegrityError("An exact Workflow is required to resolve formal audit scopes.")
+        expected = dict.fromkeys((*retained, *(spec.audit_expectations if spec else ())))
+        candidates, found = [], set()
+        gates = {}
+        for plan in self._active_plans(workflow_ref.project_id):
+            expectation = AuditExpectation.from_plan(plan)
+            managed = _managed_plan(plan)
+            if expectation in expected or (
+                expectation.gate == "CHECKPOINT"
+                and self.scope_allowed(workflow, checkpoint_id, expectation)
+            ):
+                if managed:
+                    found.add(expectation)
+                    expected[expectation] = None
+                candidates.append((plan, expectation, managed))
+        for plan, expectation, managed in candidates:
+            if expectation in expected and not managed:
+                continue
+            reference = ContractRef.from_document(plan)
+            gates[reference] = RequiredGate(
+                reference, None, expectation.gate, expectation.scope, expectation.target_ref
+            )
+        if spec:
+            gates.update({item.validation_plan_ref: item for item in spec.required_gates})
+        return (
+            list(gates.values()),
+            tuple(expected),
+            tuple(item for item in expected if item not in found),
+        )
+
+    def applicable(self, workflow_ref, checkpoint_id):
+        return self.requirements(workflow_ref, checkpoint_id)[0]
+
+    def observe(self, workflow_ref, checkpoint_id, spec, artifact_identity, *, retained=()):
+        gates, expectations, missing = self.requirements(
+            workflow_ref, checkpoint_id, spec, retained=retained
+        )
+        observations = [self.consume(gate, artifact_identity) for gate in gates]
+        observations.extend(
+            {
+                "validation_plan_ref": None,
+                "result_ref": None,
+                "gate": item.gate,
+                "level": item.level,
+                "scope": list(item.scope),
+                "target_ref": item.target_ref.to_json(),
+                "state": "NOT_VERIFIED",
+                "reason": "No published Validation plan covers this required exact scope.",
+            }
+            for item in missing
+        )
+        return observations, expectations
 
     def consume(self, required, artifact_identity):
         observation = {
@@ -384,6 +581,11 @@ class ValidationGateConsumer:
                 or plan["payload"]["gate_policy"]["gate"] != required.gate
             ):
                 raise IntegrityError("The Validation plan has a different target, gate or scope.")
+            for source in plan["payload"]["source_contract_refs"]:
+                reference = ContractRef.from_json(source)
+                active = self.store.resolve_active(reference.contract_id)
+                if active is None or ContractRef.from_document(active) != reference:
+                    raise IntegrityError("A direct Validation source is stale.")
             candidates = [
                 document
                 for document in self._history("VALIDATION_RESULT", required.target_ref.project_id)
@@ -421,11 +623,21 @@ class ValidationGateConsumer:
                 or execution["artifact_identity"] != artifact_identity
             ):
                 raise IntegrityError("The result is bound to another plan or artifact.")
-            if (
-                result["metadata"]["provenance"]["engine"] != "VALIDATION"
-                or execution["status"] != "COMPLETED"
-            ):
-                raise IntegrityError("The result is incomplete or has no Validation provenance.")
+            if result["metadata"]["provenance"]["engine"] != "VALIDATION":
+                raise IntegrityError("The result has no Validation provenance.")
+            if _managed_plan(plan):
+                from corinthos.validation.repository import ValidationRepository
+
+                repository = ValidationRepository(self.store)
+                with self.store._connection() as connection:
+                    repository.require_current(connection, required.validation_plan_ref)
+                if not repository.is_published_run(
+                    required.validation_plan_ref, reference, execution["validation_run_id"]
+                ):
+                    observation["reason"] = (
+                        "The result lacks an exact durable Validation execution record."
+                    )
+                    return observation
             if datetime.fromisoformat(result["metadata"]["created_at"]) > datetime.now(UTC):
                 raise IntegrityError("The result is dated after the current observation.")
             for document in (plan, result):
@@ -440,12 +652,16 @@ class ValidationGateConsumer:
                     verify_artifact=self.store.verify_artifact,
                 )
             gate = payload["gate_assessment"]
-            if (
-                gate["state"] != "SATISFIED"
-                or gate["gate"] != required.gate
-                or gate["scope"] != scope["level"]
-            ):
-                raise IntegrityError("The published Validation gate remains blocked.")
+            if gate["gate"] != required.gate or gate["scope"] != scope["level"]:
+                raise IntegrityError("The result has another gate or scope.")
+            if gate["state"] != "SATISFIED" or execution["status"] != "COMPLETED":
+                observation.update(
+                    state="BLOCKED",
+                    reason="The latest admissible Validation result blocks this gate.",
+                    blocking_check_ids=gate["blocking_check_ids"],
+                    finding_ids=[item["finding_id"] for item in payload["findings"]],
+                )
+                return observation
             observation.update(
                 state="SATISFIED",
                 reason="The exact published result and retained evidence satisfy this gate.",
@@ -456,3 +672,13 @@ class ValidationGateConsumer:
                 reason="Published Validation evidence is missing, stale, incomplete or inadmissible.",
             )
         return observation
+
+
+def _dependency_closure(records, roots):
+    selected, pending = set(), list(roots)
+    while pending:
+        identifier = pending.pop()
+        if identifier not in selected:
+            selected.add(identifier)
+            pending.extend(records[identifier]["depends_on"])
+    return selected

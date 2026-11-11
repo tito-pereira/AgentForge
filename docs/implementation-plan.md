@@ -167,22 +167,34 @@ Codex pilot, Windows installation and isolated checks alongside the Core
 installed-wheel results. Live Claude remains `NOT VERIFIED`. Formal Validation,
 Report and human product acceptance retain their separate scopes.
 
+## Phase 4.0 independent Validation
+
+The [Validation design](phase-4-design.md) maps the approved obligations to
+source-derived matrices, separate method review, owned audit execution,
+private evidence, durable recovery and immutable scoped results. The
+[Validation guide](validation.md) documents all five scopes, guided planning
+and run commands, exact procedure and candidate identity, managed Workflow
+gate expectations, selective revalidation and the isolated pilot audit.
+
 ## Gates and the next phase
 
 Each unit has an objective, scope, interfaces, criteria, and tests proportionate
 to risk. The Engineering Completion Gate requires precise instructions, justified
 technologies, meaningful testing, accurate documentation, and readable code.
-Until Validation is implemented, automated tests and explicit technical review
-evaluate the evidence.
+Automated tests and explicit technical review provide preliminary engineering
+evidence. Independent Validation derives and evaluates formal scoped gates
+where required.
 
 Phase 2 provides human-led Project negotiation and Phase 3 adds planning,
-Adapter Manager, sequential execution and bounded reconciliation. Independent
-Validation, Report and general product evolution remain later responsibilities.
+Adapter Manager, sequential execution and bounded reconciliation. Phase 4
+provides independent audit and formal scoped results. Report and general product
+evolution remain later responsibilities.
 The owner separately authorizes integration and subsequent construction phases.
 
-Once Project Manager, Workflow, a minimal adapter, and operational persistence
-exist, run a small isolated pilot. Repeat it once Validation and Report are
-operational. The Bench follows construction of the Core.
+The delivered Phase 3 task manager provides a separate candidate for independent
+audit. Keep its daily installation and data outside the experimental cycle.
+Report consolidates results and decision references in its own phase. The Bench
+follows construction of the Core.
 
 ## Related documentation
 

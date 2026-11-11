@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
-"""Upgrade an actual A-D database without reinterpreting contracts or approvals."""
+"""Upgrade historical execution databases without changing their existing records."""
 
 import io
 import os
@@ -19,6 +19,7 @@ from corinthos.project_manager import ProjectManager
 from corinthos.workflow import WorkflowPlanner
 
 _BASE = "eb7dabbe443657524c6cf79880c9584d25675b91"
+_BASE_V4 = "22592bf8a2d8ad1605abf332a65c34138d35069c"
 _TABLES = (
     "contracts",
     "revisions",
@@ -31,6 +32,14 @@ _TABLES = (
     "wf_turns",
     "wf_approvals",
     "wf_mandates",
+)
+_TABLES_V4 = (
+    *_TABLES,
+    "wf_executions",
+    "wf_checkpoints",
+    "wf_attempts",
+    "wf_workspace_leases",
+    "wf_execution_events",
 )
 _SETUP = """
 # Synthetic trusted fixture authority, never production terminal consent.
@@ -84,15 +93,36 @@ for operation in (
 s = planner.review(s['session_id'], s['version'], actor_id='fixture-owner')
 s = _record(planner,s,'fixture-owner',delegate=True)
 _publish(planner,s,'fixture-owner')
-assert sqlite3.connect(store.database_path).execute('PRAGMA user_version').fetchone()[0] == 3
+"""
+_EXECUTE_V4 = """
+from corinthos.workflow.execution_repository import ExecutionRepository
+workflow = json.loads((examples/'workflow.json').read_text(encoding='utf-8'))
+checkpoint = workflow['payload']['checkpoints'][0]['checkpoint_id']
+reference = ContractRef.from_document(workflow)
+repository = ExecutionRepository(store)
+execution = repository.register(
+    reference, {'workspace':str(root), 'checkpoints':{checkpoint:{'checks':['Synthetic fixture']}}},
+    actor_id='fixture-owner',
+)
+execution = repository.prepare(
+    execution['execution_id'], checkpoint, execution['version'], actor_id='fixture-owner',
+)
+attempt = repository.claim(
+    execution['execution_id'], checkpoint, execution['version'], owner_id='fixture-owner',
+    provider='codex', context={'source_snapshot':{'snapshot_id':'synthetic-fixture'}},
+)
+repository.transition(
+    attempt['attempt_id'], attempt['fence'], 'INTERRUPTED', owner_id='fixture-owner',
+    details={'cleanup_confirmed': True, 'reason': 'Synthetic historical interruption.'},
+)
 """
 
 
-def _records(database):
+def _records(database, tables=_TABLES):
     with sqlite3.connect(database) as connection:
         return {
             table: connection.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
-            for table in _TABLES
+            for table in tables
         }
 
 
@@ -101,23 +131,22 @@ def _version(database):
         return connection.execute("PRAGMA user_version").fetchone()[0]
 
 
-@pytest.fixture
-def phase3_state(tmp_path):
+def _historical_state(tmp_path, commit, version, extra_setup=""):
     repository = Path(__file__).resolve().parents[1]
     archive = subprocess.run(
-        ["git", "archive", "--format=zip", _BASE, "src/corinthos"],
+        ["git", "archive", "--format=zip", commit, "src/corinthos"],
         cwd=repository,
         capture_output=True,
         check=True,
     ).stdout
-    old = tmp_path / "phase3-ad-code"
+    old = tmp_path / "historical-code"
     with ZipFile(io.BytesIO(archive)) as zipped:
         zipped.extractall(old)
     project = tmp_path / "project"
     project.mkdir()
     environment = {**os.environ, "PYTHONPATH": str(old / "src"), "PYTHONUTF8": "1"}
     result = subprocess.run(
-        [sys.executable, "-B", "-c", _SETUP, str(repository / "examples/contracts")],
+        [sys.executable, "-B", "-c", _SETUP + extra_setup, str(repository / "examples/contracts")],
         cwd=project,
         env=environment,
         text=True,
@@ -125,7 +154,13 @@ def phase3_state(tmp_path):
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
+    assert _version(project / ".corinthos/state.db") == version
     return project
+
+
+@pytest.fixture
+def phase3_state(tmp_path):
+    return _historical_state(tmp_path, _BASE, 3)
 
 
 def test_actual_v3_upgrade_preserves_every_old_row_and_verified_backup(phase3_state):
@@ -133,7 +168,7 @@ def test_actual_v3_upgrade_preserves_every_old_row_and_verified_backup(phase3_st
     before = _records(database)
     assert all(before[table] for table in _TABLES)
     store = ContractStore(phase3_state)
-    assert _version(database) == 4 and _records(database) == before
+    assert _version(database) == 5 and _records(database) == before
     (backup,) = database.parent.glob("state.pre-v4-*.db")
     assert _version(backup) == 3 and _records(backup) == before
     assert ProjectManager(phase3_state).list()[0]["state"] == "PUBLISHED"
@@ -169,7 +204,7 @@ def test_concurrent_v4_openers_create_one_verified_backup(phase3_state):
     before = _records(database)
     with ThreadPoolExecutor(max_workers=2) as pool:
         stores = list(pool.map(ContractStore, (phase3_state, phase3_state)))
-    assert len(stores) == 2 and _version(database) == 4 and _records(database) == before
+    assert len(stores) == 2 and _version(database) == 5 and _records(database) == before
     assert len(list(database.parent.glob("state.pre-v4-*.db"))) == 1
 
 
@@ -185,3 +220,30 @@ def test_read_only_v3_is_preserved_without_upgrade(phase3_state):
         assert not list(database.parent.glob("state.pre-v4-*.db"))
     finally:
         database.chmod(original_mode)
+
+
+def test_populated_v4_rollback_and_upgrade_preserve_every_previous_record(tmp_path, monkeypatch):
+    project = _historical_state(tmp_path, _BASE_V4, 4, _EXECUTE_V4)
+    database = project / ".corinthos/state.db"
+    before = _records(database, _TABLES_V4)
+    assert all(before.values())
+
+    with monkeypatch.context() as patch:
+        patch.setattr(storage, "_MIGRATION_V5", (*storage._MIGRATION_V5, "INVALID SQL"))
+        with pytest.raises(StoreError):
+            ContractStore(project)
+    (backup,) = database.parent.glob("state.pre-v5-*.db")
+    assert _version(database) == _version(backup) == 4
+    assert _records(database, _TABLES_V4) == _records(backup, _TABLES_V4) == before
+    with sqlite3.connect(database) as connection:
+        assert not connection.execute(
+            "SELECT name FROM sqlite_schema WHERE name LIKE 'val_%'"
+        ).fetchall()
+
+    ContractStore(project)
+    assert _version(database) == 5 and _records(database, _TABLES_V4) == before
+    backups = list(database.parent.glob("state.pre-v5-*.db"))
+    assert len(backups) == 2
+    assert all(_version(item) == 4 and _records(item, _TABLES_V4) == before for item in backups)
+    ContractStore(project)
+    assert list(database.parent.glob("state.pre-v5-*.db")) == backups

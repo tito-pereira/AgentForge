@@ -2,6 +2,7 @@
 """Guided execution configuration, inspection and explicit recovery decisions."""
 
 import argparse
+import json
 import secrets
 import sys
 from pathlib import Path
@@ -23,10 +24,12 @@ from .execution_repository import ExecutionRepository
 from .reconciliation import RevisionReconciler
 from .runtime import WorkflowRunner
 from .verification import (
+    AuditExpectation,
     CheckpointSpec,
     CommandCheck,
     TechnicalReview,
     ValidationGateConsumer,
+    _managed_plan,
     workspace_snapshot,
 )
 
@@ -42,6 +45,7 @@ def configure_parser(actions) -> None:
         "changes": "Inspect active source revisions and conservative impact.",
         "request": "Diagnose a bounded structural conflict for Project Manager negotiation.",
         "execution-history": "Inspect append-only execution observations.",
+        "audit-request": "Inspect an exact retained verifying or blocked candidate for Validation.",
     }
     for name, description in descriptions.items():
         parser = actions.add_parser(name, help=description, description=description)
@@ -51,6 +55,8 @@ def configure_parser(actions) -> None:
         if name in {"configure", "changes", "request"}:
             parser.add_argument("contract_id", help="Published Workflow logical ID.")
             parser.add_argument("--revision", help="Exact published revision ID.")
+        elif name == "audit-request":
+            parser.add_argument("attempt_id", help="Current verifying or blocked attempt ID.")
         elif name != "executions":
             parser.add_argument(
                 "execution_id",
@@ -88,6 +94,12 @@ def configure_parser(actions) -> None:
                 action="append",
                 default=[],
                 help="One fixed native-host prefix argument. Repeat to preserve separate arguments.",
+            )
+        if name in {"configure", "reconcile"}:
+            parser.add_argument(
+                "--formal-audits",
+                action="store_true",
+                help="Bind required exact audit scopes even when their plans are absent.",
             )
         if name == "execute":
             parser.add_argument(
@@ -149,7 +161,58 @@ def _runner(arguments, store) -> WorkflowRunner:
     return WorkflowRunner(arguments.root, adapters, reviewer=_technical_review)
 
 
-def _specifications(store, reference, *, existing=None):
+def _choose_audits(store, consumer, workflow, checkpoint_id, existing):
+    reference = ContractRef.from_document(workflow)
+    payload = workflow["payload"]
+    candidates = [
+        AuditExpectation("CHECKPOINT", reference, (checkpoint_id,)),
+        AuditExpectation(
+            "PRODUCT",
+            ContractRef.from_json(payload["project_contract_ref"]),
+            (reference.project_id,),
+        ),
+    ]
+    integration_ids = set()
+    for row in payload["modules"]:
+        module_ref = ContractRef.from_json(row["module_contract_ref"])
+        identifier = row["module_id"]
+        candidates.append(AuditExpectation("MODULE", module_ref, (identifier,)))
+        integration_ids.add(identifier)
+        module = store.get(module_ref)["payload"]
+        integration_ids.update(
+            item["interface_id"]
+            for item in (*module["provided_interfaces"], *module["consumed_interfaces"])
+        )
+    candidates.extend(
+        AuditExpectation("INTEGRATION", reference, (identifier,))
+        for identifier in sorted(integration_ids)
+    )
+    candidates.extend(
+        AuditExpectation("PLAYTEST_MILESTONE", reference, (row["milestone_id"],))
+        for row in payload["playtest_milestones"]
+    )
+    available = [
+        item
+        for item in candidates
+        if item not in existing and consumer.scope_allowed(workflow, checkpoint_id, item)
+    ]
+    chosen = list(existing)
+    while available:
+        selected = _pick(
+            [None, *available],
+            lambda item: (
+                "Finish audit bindings" if item is None else f"{item.level} {', '.join(item.scope)}"
+            ),
+            "Choose an exact formal audit scope",
+        )
+        if selected is None:
+            break
+        chosen.append(selected)
+        available.remove(selected)
+    return tuple(chosen)
+
+
+def _specifications(store, reference, *, existing=None, formal=False):
     workflow = store.get(reference)
     if workflow is None or reference.contract_type != "WORKFLOW":
         raise IntegrityError("Execution configuration requires an exact published Workflow.")
@@ -189,7 +252,8 @@ def _specifications(store, reference, *, existing=None):
         allowed = _lines(
             "List permitted relative source files or directories. Use explicit paths, without a root wildcard"
         )
-        gates = ValidationGateConsumer(store).applicable(reference, checkpoint["checkpoint_id"])
+        consumer = ValidationGateConsumer(store)
+        gates, expectations, _ = consumer.requirements(reference, checkpoint["checkpoint_id"])
         print("Applicable published independent checkpoint gates")
         print(
             render_fields(
@@ -203,6 +267,10 @@ def _specifications(store, reference, *, existing=None):
                 ]
             )
         )
+        if formal:
+            expectations = _choose_audits(
+                store, consumer, workflow, checkpoint["checkpoint_id"], expectations
+            )
         specs.append(
             CheckpointSpec(
                 checkpoint["checkpoint_id"],
@@ -210,7 +278,10 @@ def _specifications(store, reference, *, existing=None):
                 deliverables,
                 tuple(allowed),
                 tuple(reviews),
-                tuple(gates),
+                tuple(
+                    gate for gate in gates if not _managed_plan(store.get(gate.validation_plan_ref))
+                ),
+                expectations,
             )
         )
     return specs
@@ -465,6 +536,9 @@ def run(arguments: argparse.Namespace) -> int:
         if action == "executions":
             print(render_fields(repository.list()))
             return 0
+        if action == "audit-request":
+            print(json.dumps(repository.audit_request(arguments.attempt_id), indent=2))
+            return 0
         if action in {"configure", "changes", "request"}:
             reference = _exact(repository, arguments.contract_id, arguments.revision)
             if reference is None:
@@ -474,7 +548,9 @@ def run(arguments: argparse.Namespace) -> int:
                 print(
                     render_fields(
                         runner.configure(
-                            reference, _specifications(store, reference), actor_id=actor
+                            reference,
+                            _specifications(store, reference, formal=arguments.formal_audits),
+                            actor_id=actor,
                         )
                     )
                 )
@@ -523,7 +599,10 @@ def run(arguments: argparse.Namespace) -> int:
                 print("PROPOSED REVISION IMPACT AND HISTORICAL EVIDENCE PRESERVATION")
                 print(render_fields(impact))
                 specs = _specifications(
-                    store, reference, existing=execution["bindings"]["checkpoints"]
+                    store,
+                    reference,
+                    existing=execution["bindings"]["checkpoints"],
+                    formal=arguments.formal_audits,
                 )
                 bindings = runner.prepare_bindings(reference, specs)
                 workflow = store.get(reference)

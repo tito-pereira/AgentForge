@@ -1,7 +1,7 @@
 # Agent instructions
 
-This repository contains the Corinthos Core foundation, Contract Kernel and
-Project Manager, package version `0.1.0`.
+This repository contains the Corinthos Core foundation, Contract Kernel,
+Project Manager, Workflow, adapters and Validation, package version `0.1.0`.
 The product target is Core v0.1, based on product specification revision v0.2.
 Phase 0 established the foundation. Phase 0.1 covers the English-language migration,
 publication review, verification, and first public GitHub publication when authorized.
@@ -84,8 +84,16 @@ Keep Adapter Manager provider capabilities and live evidence honest. Follow the
 instructions. An agent result carries no human approval or independent Validation
 authority. The owner's continuation authorizes scheduler/execution, durable recovery,
 impact reconciliation, the selected real pilot and release/PR checkpoints E–J.
-Pilot contract and technical-plan approval still require the actual foreground
-terminal bridge. Validation and Report remain later phases.
+Pilot contract and technical-plan approval require the actual foreground
+terminal bridge. The delivered pilot retains its recorded approval lineage.
+
+Phase 4 uses the [Validation guide](docs/validation.md) to derive obligations
+directly from approved sources and the Standard. Keep criterion-specific
+method review, candidate evaluation and Workflow implementation separate.
+Publish exact VC/VRC records through the Kernel using the trusted Validation
+context. A result records admissible evidence and a calculated gate.
+Human approval, product acceptance, Report and experimental-build promotion
+retain their separate boundaries.
 
 Treat `urn:nukytera:contracts:1.0:*`, `nukytera-standard` and SQLite application
 ID `0x4E554B59` as durable identifiers. Keep the original document bytes,
@@ -115,12 +123,14 @@ python -m ruff format --check .
 python examples/contract_kernel.py
 python -m corinthos project --help
 python -m corinthos workflow --help
+python -m corinthos validation --help
 ```
 
 Verify imports and CLI behavior, valid Standard loading, and rejection of invalid,
 incomplete, or disabled Commandments. Review packaging, diffs, documentation, and Git
-exclusions. Automated tests and explicit technical review provide the initial
-verification while the Validation Engine is planned.
+exclusions. Automated tests and explicit technical review provide preliminary
+engineering verification. Formal Validation derives separate scope-specific
+results and gates.
 
 Report actual commands, results, limitations, and evidence for M1–M5. Distinguish
 local execution from observed remote CI. Mark blocked or unexecuted checks as
@@ -139,7 +149,7 @@ Preserve the complete, unmodified [LICENSE](LICENSE), appropriate source notices
 SPDX headers, and accurate packaging metadata. Respect existing copyright and
 third-party notices, and never invent copyright-holder names or ownership
 transfers. Record license-related decisions and keep licensing guidance consistent
-with the official license. Keep Phase 3 changes reviewable on their dedicated branch.
-The current authorization includes normal push, CI and a human-reviewable PR.
+with the official license. Keep each phase reviewable on its authorized branch.
+An implementation order can authorize a normal push, CI and a human-reviewable PR.
 Merging into the default branch requires separate authorization.
 Preserve the historical `phase-1-baseline` tag and all existing commit history.

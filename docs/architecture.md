@@ -2,7 +2,8 @@
 
 Documentation baseline dated November 8, 2026. Product requirements revision v0.2
 targets Core v0.1. Package version `0.1.0` includes the Phase 0 foundation and
-Phase 1 Contract Kernel, Phase 2 Project Manager and Phase 3 Workflow + Adapters.
+Phase 1 Contract Kernel, Phase 2 Project Manager, Phase 3 Workflow + Adapters and
+Phase 4 Validation.
 Phase 0.1 translates public materials into English and prepares public publication.
 Phase 1.1 establishes the Corinthos runtime names and private state path.
 The same requirements revision, product target, package version and Contract
@@ -16,7 +17,7 @@ Kernel architecture apply to Corinthos.
 | Adapter Manager | Translates the same Standard for Codex, Claude Code, and future integrations. | Separate Codex/Claude provider boundaries, context preparation, capabilities and advisory assistance are implemented. Live verification is recorded separately. |
 | Project Manager | Negotiates goals and requirements with the user and publishes the approved Project Contract. | Structured service, guided terminal, durable sessions, exact human approval and bounded PRR intake exist. |
 | Workflow Engine | Plans modules, interfaces, technologies, and checkpoints; coordinates execution and change impact analysis. | Exact planning/publication, sequential checkpoint attempts, actual engineering checks, leased recovery and conservative reconciliation are implemented. |
-| Validation Engine | Independently audits local and global obligations against approved revisions. | Planned. |
+| Validation Engine | Independently audits local and global obligations against approved revisions. | Scope-derived matrices, reviewed executable and inspection procedures, durable runs, immutable results and technical gates are implemented. |
 | Report Engine | Consolidates results, decisions, and evidence references while preserving the authority of their sources. | Planned. |
 
 The conceptual order is Standard → Adapter Manager → Project Manager → Workflow →
@@ -55,8 +56,9 @@ belong to separate operational state.
 Private state is stored at `.corinthos/state.db`. Evidence references use verified
 digests of local artifacts. SQLite, artifacts and Git have separate transaction
 boundaries. Project Manager sessions and approvals share the versioned database.
-Workflow execution state, fenced attempts and inspected recovery share the
-versioned database while retaining separate operational identities.
+Workflow execution and independent Validation share the versioned database.
+Their drafts, claims, observations and recovery retain separate operational
+identities.
 See [storage and recovery](storage.md) and the [design record](contract-kernel-design.md).
 
 ## Project Manager boundary
@@ -73,7 +75,7 @@ Operational sessions retain accepted turns, draft versions, proposal decisions,
 questions, evidence records and approval linkage. The local terminal bridge binds
 one explicit foreground action to a complete frozen candidate and the Kernel's
 trusted callback. Publication approves a specification. Workflow planning consumes
-its exact immutable revision. Independent Validation remains a later Engine.
+its exact immutable revision. Validation reads it directly for independent audit.
 
 A published Project Revision Request can open a bounded session from the active
 approved Project base. The owner keeps, defers or approves a change while
@@ -104,8 +106,19 @@ The initial A–D stop is historical. The authorized E–J continuation adds the
 command/artifact checks, explicit preliminary review and conservative impact
 reconciliation. A bounded structural conflict can reach the existing Project
 Manager through a real published PRR. Unchanged work retains its original
-evidence identity through explicit inheritance. Independent Validation, Report
-and general product evolution remain later Engine responsibilities.
+evidence identity through explicit inheritance. Workflow requests exact scoped
+audits and consumes their admissible results.
+
+## Independent Validation boundary
+
+The [Validation service](validation.md) derives applicable requirements and
+M1–M5 independently of the implementer's selected checks. The Kernel enforces
+scope and mandatory coverage. Separate evaluator inspection establishes method
+adequacy. The runner observes a verified candidate copy through bound procedures,
+retains private evidence and derives an immutable result and scoped technical
+gate. Workflow checks that evidence before affected progression. Changes to
+product decisions and formal human acceptance retain their owner authority.
+Report and general product evolution remain later work.
 
 ## Related documentation
 
@@ -115,6 +128,7 @@ planning; contributors can use these local documents without private access.
 
 - [Engineering instructions](../AGENTS.md)
 - [Contract catalogue](contracts.md)
+- [Validation methods, evidence and gates](validation.md)
 - [Workflows and authority](workflows.md)
 - [Implementation plan](implementation-plan.md)
 - [Practical decisions and historical verification](decisions.md)

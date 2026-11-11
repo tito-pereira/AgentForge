@@ -72,7 +72,8 @@ jobs:
           import corinthos
           import corinthos.adapters
           import corinthos.workflow
-          for module in (corinthos, corinthos.adapters, corinthos.workflow):
+          import corinthos.validation.runtime
+          for module in (corinthos, corinthos.adapters, corinthos.workflow, corinthos.validation.runtime):
               origin = Path(module.__file__).resolve()
               assert origin.is_relative_to(Path(sys.prefix).resolve()), origin
               print(module.__name__, origin)
@@ -92,6 +93,12 @@ jobs:
           ${{ matrix.python }} -m corinthos workflow execute --help
           ${{ matrix.python }} -m corinthos workflow recover --help
           ${{ matrix.python }} -m corinthos workflow reconcile --help
+      - name: Verify Validation commands
+        run: |
+          ${{ matrix.python }} -m corinthos validation --help
+          ${{ matrix.python }} -m corinthos validation plan --help
+          ${{ matrix.python }} -m corinthos validation run --help
+          ${{ matrix.python }} -m corinthos validation recover --help
       - name: Run all tests
         run: ${{ matrix.python }} -m pytest
       - name: Run the contract kernel demonstration
