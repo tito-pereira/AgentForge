@@ -27,7 +27,7 @@ assert files("corinthos.resources").joinpath("standard.yaml").is_file()
 assert files("corinthos.resources").joinpath("standard.schema.json").is_file()
 
 with TemporaryDirectory(prefix="corinthos-installed-check-") as directory:
-    root = Path(directory)
+    root = Path(directory).resolve(strict=True)
     original = b"Owner's existing project instructions.\n"
     (root / "AGENTS.md").write_bytes(original)
     commands = (

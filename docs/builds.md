@@ -26,6 +26,15 @@ SHA-256. Recipe and check processes receive isolated temporary/application data 
 bounded output/time and the existing process containment. These trusted local
 commands are not a hostile-code sandbox.
 
+Pinned inputs must be ordinary files with no redirected path. POSIX venv Python
+launchers are commonly symlinks; select an intentionally resolved native interpreter
+for stdlib-only checks, as the test fixtures do with `Path(sys.executable).resolve()`.
+Resolving a venv launcher can select its base interpreter and different installed
+packages. For recipes requiring additional packages, explicitly select an ordinary
+runtime/tool with those dependencies and record its real inputs; do not silently
+assume a launcher alias preserves the venv environment. The input guard remains
+strict about links and is not disabled for CI.
+
 Preparation first records an operation intent. It physically copies the bounded
 source inventory, executes the explicit recipe and seals a complete final inventory
 of source, packages, configuration and generated files. The immutable BUILD origin

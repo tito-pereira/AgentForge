@@ -26,6 +26,8 @@ from corinthos.workflow.verification import (
     workspace_snapshot,
 )
 
+_PYTHON = str(Path(sys.executable).resolve(strict=True))
+
 
 @pytest.fixture
 def built(tmp_path):
@@ -39,7 +41,7 @@ def built(tmp_path):
                 "source-check",
                 checkpoint["verification_plan"][0],
                 (
-                    sys.executable,
+                    _PYTHON,
                     "-c",
                     "from pathlib import Path; assert Path('README.md').read_text() == 'Hello Ada'",
                 ),
@@ -66,7 +68,7 @@ def _ready(service, build, *, fail=False, reviewer=True):
             "scenario-" + str(i),
             scenario,
             (
-                sys.executable,
+                _PYTHON,
                 "-c",
                 "from pathlib import Path; assert Path('README.md').read_text() == 'Hello Ada'"
                 if not fail
@@ -144,7 +146,7 @@ def test_real_package_bytes_are_sealed_and_command_data_paths_are_isolated(built
         "package",
         "Package the source",
         (
-            sys.executable,
+            _PYTHON,
             "-c",
             "import os; from pathlib import Path; Path('packages').mkdir(); Path('packages/example.whl').write_bytes(b'actual wheel fixture'); Path('config.txt').write_text(os.environ['LOCALAPPDATA'])",
         ),
@@ -383,7 +385,7 @@ def test_build_cli_parser_keeps_recipe_argv_and_reads_do_not_launch(built, capsy
             "milestone",
             "execution",
             "--recipe-executable",
-            sys.executable,
+            _PYTHON,
             "--recipe-arg=-m",
             "--recipe-arg=build",
         ]
@@ -438,7 +440,7 @@ def test_build_frozen_publication_rechecks_the_sealed_identity(built, monkeypatc
 def test_interrupted_preparation_blocks_blind_retry_until_real_inspection(built, tmp_path):
     service, _, _, refs, execution, _ = built
     failed = CommandCheck(
-        "failed-package", "Package source", (sys.executable, "-c", "raise SystemExit(2)")
+        "failed-package", "Package source", (_PYTHON, "-c", "raise SystemExit(2)")
     )
     with pytest.raises(ConflictError, match="Build command failed"):
         service.prepare(
@@ -469,9 +471,7 @@ def test_interrupted_preparation_blocks_blind_retry_until_real_inspection(built,
 def test_exception_during_readiness_requires_inspection_and_does_not_preserve_pass(built):
     service, build, *_ = built
     _ready(service, build)
-    check = CommandCheck(
-        "readiness", build["origin"]["scenarios"][0], (sys.executable, "-c", "pass")
-    )
+    check = CommandCheck("readiness", build["origin"]["scenarios"][0], (_PYTHON, "-c", "pass"))
 
     def interrupted(_):
         raise ConflictError("Synthetic disappearance before review completed")

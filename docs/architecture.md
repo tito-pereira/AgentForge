@@ -74,8 +74,9 @@ See [storage and recovery](storage.md) and the [design record](contract-kernel-d
 The [Project Manager service](project-manager.md) owns product-level negotiation,
 structured suggestions and binding demands, preliminary checks, exact review and
 approved Project publication. A thin terminal adapter collects ordinary-language
-answers and structured choices. An optional assistance callable supplies advisory
-text for future integration. Structural checks expose demonstrable omissions and
+answers and structured choices. Explicit installed `project advise` supplies
+persisted advisory text without editing negotiation or approving decisions.
+Structural checks expose demonstrable omissions and
 inconsistent references while natural-language consistency and technical
 feasibility require explicit human review.
 
@@ -126,7 +127,8 @@ adequacy. The runner observes a verified candidate copy through bound procedures
 retains private evidence and derives an immutable result and scoped technical
 gate. Workflow checks that evidence before affected progression. Changes to
 product decisions and formal human acceptance retain their owner authority.
-General product evolution remains later work.
+The [versioned lifecycle](evolution.md) connects retained delivery, bounded
+evolution and independent playtest admission while preserving these authorities.
 
 ## Report boundary
 

@@ -60,9 +60,9 @@ The [verification record](phase-6-verification.md) links the executable evidence
 | RF01–RF02 | Packaged initialization/capabilities and explicit persisted advice implemented; focused tests and working-wheel outside-checkout smoke passed. Final platform verification remains separate. |
 | RF03–RF06 | Approved milestone consumption, exact build bridge and selective reconciliation implemented/tested. The real successor milestone decision and pilot follow-through remain open. |
 | RF07 | Promotion, pins, voluntary switching, feedback and safe retention implemented; real-byte/transaction tests and independent race/reconciliation review passed. Real two-milestone pilot proof remains open. |
-| RF08 | Native versions, original delivery adoption, exact optional review and evolution-to-PM implemented/tested; genuine pilot lineage/report bundles require the remaining actual journey. |
-| RF09 | Lifecycle source cutoffs, readiness/session projections, typed feedback and original review history implemented/tested; actual successor report/export bundles remain open. |
+| RF08 | Native versions, original delivery adoption, exact optional review and evolution-to-PM implemented/tested. Actual installed pilot baseline adoption/evolution is recorded; evolved delivery still requires the reserved milestone journey. |
+| RF09 | Lifecycle source cutoffs, readiness/session projections, typed feedback and original review history implemented/tested. Three actual installed baseline report/export bundles passed verification; successor MILESTONE/evolved bundles remain open. |
 | RF10 | v6 migration preserves genuinely populated old tables/artifacts, including unfinished v5 report recovery; populated backup/recovery and old-version regressions exercised. |
-| M1–M5 | Bounded design, existing technologies, meaningful security/restart tests, English guides and independent review retained. Final installed/platform/Graphify proof remains to be recorded. |
+| M1–M5 | Bounded design, existing technologies, meaningful security/restart tests, English guides and independent review retained. Clean-wheel Windows verification passed; final CI/Graphify results are linked from the PR and delivery record. |
 | Native interoperability | Real Codex artifact checks passed, but protocol completion timed out. Claude Code access is absent. Mandatory comparable proof remains OPEN. |
 | Delivery authority | Draft/incomplete PR required while mandatory proof is absent; no Phase 6 merge authorization or genuine acceptance is inferred. |
