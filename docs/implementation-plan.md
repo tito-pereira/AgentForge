@@ -178,6 +178,12 @@ gate expectations, selective revalidation and the isolated pilot audit.
 
 ## Gates and the next phase
 
+Phase 5 adds the [Report Engine](report.md), following the
+[source and publication design](phase-5-design.md). It captures exact source
+cutoffs, composes the nine ERC sections across five kinds, preserves immutable
+revisions, and exposes installed generation, inspection, comparison and export.
+Reporting preserves current versus historical eligibility and separate authority.
+
 Each unit has an objective, scope, interfaces, criteria, and tests proportionate
 to risk. The Engineering Completion Gate requires precise instructions, justified
 technologies, meaningful testing, accurate documentation, and readable code.
@@ -187,14 +193,13 @@ where required.
 
 Phase 2 provides human-led Project negotiation and Phase 3 adds planning,
 Adapter Manager, sequential execution and bounded reconciliation. Phase 4
-provides independent audit and formal scoped results. Report and general product
-evolution remain later responsibilities.
+provides independent audit and formal scoped results. Phase 5 consolidates those
+facts into reports. General product evolution remains a later responsibility.
 The owner separately authorizes integration and subsequent construction phases.
 
 The delivered Phase 3 task manager provides a separate candidate for independent
 audit. Keep its daily installation and data outside the experimental cycle.
-Report consolidates results and decision references in its own phase. The Bench
-follows construction of the Core.
+The Bench follows construction of the Core.
 
 ## Related documentation
 

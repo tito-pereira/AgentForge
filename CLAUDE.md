@@ -60,8 +60,11 @@ Phase 4 adds [independent Validation](docs/validation.md). Derive the matrix
 from exact approved sources and the Standard, assess method adequacy, inspect
 the retained candidate independently and publish scoped results through the
 Kernel. Preliminary engineering review, independent gates and human acceptance
-retain distinct authority. Report and experimental-build promotion remain
-later work.
+retain distinct authority. Phase 5 provides [source-backed reports](docs/report.md)
+with coherent cutoffs, immutable ERC publication, history/comparison and safe
+JSON/Markdown export. Preserve full candidate identities, source proof and
+separate technical/delivery/availability/acceptance states. Normal reports need
+no new human consent. Experimental-build promotion remains later work.
 Follow the [storage migration procedure](docs/storage.md#migrating-existing-project-state)
 for each authorized project. Preserve the published bytes, approval receipts,
 evidence hashes, event order, and SQLite application and schema markers.

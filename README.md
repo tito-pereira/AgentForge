@@ -6,8 +6,8 @@ verification. It aims to preserve engineering standards when working with
 different agents, initially Codex and Claude Code.
 
 The implementation includes the **Phase 0 foundation**, **Phase 1 Contract
-Kernel**, **Phase 2 Project Manager**, **Phase 3 Workflow + Adapters** and
-**Phase 4 Validation Engine**, with package version `0.1.0`.
+Kernel**, **Phase 2 Project Manager**, **Phase 3 Workflow + Adapters**,
+**Phase 4 Validation Engine** and **Phase 5 Report Engine**, with package version `0.1.0`.
 Phase 0 established English-language public
 development, clean Windows and Linux environments and MPL 2.0.
 The product target remains Core v0.1, based on product specification revision v0.2.
@@ -43,13 +43,15 @@ Earlier names and execution evidence are recorded in [decisions](docs/decisions.
   through the real Kernel and Project Manager.
 - Independent scoped Validation planning, exact reviewed procedures, durable
   evidence-backed runs and formal gate consumption.
+- Consistent source snapshots, immutable nine-section reports, revision history,
+  comparisons and private canonical JSON/Markdown export through an installed CLI.
 
 The six Engines use the same kernel. Project Manager provides human-led structured
 negotiation. Adapter Manager has separate Codex and Claude provider boundaries.
 Workflow supports engineering planning, sequential execution and inspected
 recovery. Validation derives independent plans and publishes scoped results
-for Workflow to consume. Report and experimental-build promotion remain
-subsequent work.
+for Workflow to consume. Report consolidates exact source facts and history.
+Experimental-build promotion remains subsequent work.
 Natural-language consistency and technical feasibility require human review.
 
 ## Five Engineering Commandments
@@ -250,6 +252,26 @@ corinthos validation --root PROJECT_ROOT run PLAN_ID --candidate CANDIDATE_DIR -
 The [Validation guide](docs/validation.md) covers evidence, evaluator separation,
 formal gate expectations, inspection, recovery and revalidation.
 
+## Source-backed reports
+
+Use an existing authorized Core project and its published Project identity.
+The candidate is the exact source/package directory to inventory. Keep exports
+outside that candidate so they do not change its identity.
+
+```text
+corinthos report --root PROJECT_ROOT generate PROJECT_CONTRACT_ID --candidate CANDIDATE_DIR
+corinthos report --root PROJECT_ROOT show-draft DRAFT_ID
+corinthos report --root PROJECT_ROOT publish DRAFT_ID
+corinthos report --root PROJECT_ROOT show REPORT_ID --revision REPORT_REVISION_ID
+corinthos report --root PROJECT_ROOT export REPORT_ID --revision REPORT_REVISION_ID --destination NEW_EXPORT_DIRECTORY
+corinthos report --root PROJECT_ROOT verify-export NEW_EXPORT_DIRECTORY
+```
+
+The [Report guide](docs/report.md) explains all five report kinds, historical
+cutoffs, latest-result selection, M1–M5 proof and gaps, delivery provenance,
+comparison, current verification and recoverable exports. Normal technical
+reports require no paid agent session or additional human approval.
+
 ## Standard validation
 
 `policies/standard.yaml` declares M1–M5. `schemas/standard.schema.json` requires
@@ -336,6 +358,7 @@ release. Actual results and outstanding limits remain tied to their evidence.
 - [Workflow planning and exact approval](docs/workflow-planning.md)
 - [Execution, recovery and revision reconciliation](docs/workflow-execution.md)
 - [Independent Validation and formal gates](docs/validation.md)
+- [Report snapshots, history and JSON/Markdown export](docs/report.md)
 - [Adapter Manager capabilities and verification](docs/adapters.md)
 - [SQLite storage and recovery](docs/storage.md)
 - [Phase 3 installed-wheel and native verification](docs/phase-3-verification.md)

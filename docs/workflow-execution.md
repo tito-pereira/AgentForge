@@ -259,5 +259,6 @@ from corinthos.workflow.verification import CheckpointSpec, CommandCheck, Techni
 
 These APIs use the existing Kernel and private SQLite schema. The
 [Validation Engine](validation.md) supplies independent results for managed
-gates. Full general product-evolution automation, builds promoted for playtest,
-Report and formal product acceptance remain later-phase capabilities.
+gates. The [Report Engine](report.md) provides source-backed snapshots of this
+history. Full general product-evolution automation, builds promoted for playtest
+and formal product acceptance retain their separate boundaries.
