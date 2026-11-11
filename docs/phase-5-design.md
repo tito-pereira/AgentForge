@@ -56,6 +56,9 @@ A source watermark excludes Report's own contracts/events so publication does
 not make another unchanged Report capture falsely stale. Later source changes
 invalidate a current publication. Later legitimate history does not invalidate
 an explicitly preserved historical cutoff.
+Existing Kernel-published HUMAN acceptance reviews are captured separately by
+exact approval, document hash and publication time. They affect source freshness
+without transferring their approval or feedback to a new report.
 
 ## Composition and provenance
 

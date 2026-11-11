@@ -315,7 +315,8 @@ publication reconciles the exact committed document before completing its receip
 
 One read transaction captures source documents, safe operational projections and
 event cutoffs. Source guards exclude Report's own rows/events, while preserving
-all original source states. Bulk source checks and preliminary file hashing run
+all original source states. Existing exact HUMAN acceptance reviews remain
+historical sources and participate in that guard. Bulk source checks and preliminary file hashing run
 before the writer reservation. Publication uses a connection-local SQLite
 `data_version` check to detect intervening commits, with bounded preflight retries,
 then stat guards before/after Kernel publication and the Kernel's indexed-evidence

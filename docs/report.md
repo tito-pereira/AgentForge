@@ -130,6 +130,9 @@ fields. An adverse technical result does not erase a recorded delivery. Normal
 reports remain NOT_REVIEWED. Historical feedback retains its original
 build/milestone/session source when supported, and unavailable feedback/review
 sources remain gaps. Report provides no Feedback Tracker or build promotion.
+Existing Kernel-published HUMAN reviews with matching exact approval IDs retain
+their original document hash, dates, delivery and feedback associations in history.
+Their acceptance never becomes the new report's approval or acceptance.
 
 ## Revision history, comparison and recovery
 

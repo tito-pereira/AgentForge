@@ -359,6 +359,7 @@ release. Actual results and outstanding limits remain tied to their evidence.
 - [Execution, recovery and revision reconciliation](docs/workflow-execution.md)
 - [Independent Validation and formal gates](docs/validation.md)
 - [Report snapshots, history and JSON/Markdown export](docs/report.md)
+- [Phase 5 installed-wheel and real reporting verification](docs/phase-5-verification.md)
 - [Adapter Manager capabilities and verification](docs/adapters.md)
 - [SQLite storage and recovery](docs/storage.md)
 - [Phase 3 installed-wheel and native verification](docs/phase-3-verification.md)

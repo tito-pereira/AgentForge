@@ -183,6 +183,8 @@ Phase 5 adds the [Report Engine](report.md), following the
 cutoffs, composes the nine ERC sections across five kinds, preserves immutable
 revisions, and exposes installed generation, inspection, comparison and export.
 Reporting preserves current versus historical eligibility and separate authority.
+The [Phase 5 verification record](phase-5-verification.md) records the installed
+service regression, generated pilot reports, separate review and delivery limits.
 
 Each unit has an objective, scope, interfaces, criteria, and tests proportionate
 to risk. The Engineering Completion Gate requires precise instructions, justified
