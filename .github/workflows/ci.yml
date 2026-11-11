@@ -73,7 +73,8 @@ jobs:
           import corinthos.adapters
           import corinthos.workflow
           import corinthos.validation.runtime
-          for module in (corinthos, corinthos.adapters, corinthos.workflow, corinthos.validation.runtime):
+          import corinthos.report.service
+          for module in (corinthos, corinthos.adapters, corinthos.workflow, corinthos.validation.runtime, corinthos.report.service):
               origin = Path(module.__file__).resolve()
               assert origin.is_relative_to(Path(sys.prefix).resolve()), origin
               print(module.__name__, origin)
@@ -99,6 +100,13 @@ jobs:
           ${{ matrix.python }} -m corinthos validation plan --help
           ${{ matrix.python }} -m corinthos validation run --help
           ${{ matrix.python }} -m corinthos validation recover --help
+      - name: Verify Report commands
+        run: |
+          ${{ matrix.python }} -m corinthos report --help
+          ${{ matrix.python }} -m corinthos report generate --help
+          ${{ matrix.python }} -m corinthos report export --help
+          ${{ matrix.python }} -m corinthos report recover --help
+          ${{ matrix.python }} -m corinthos report compare --help
       - name: Run all tests
         run: ${{ matrix.python }} -m pytest
       - name: Run the contract kernel demonstration

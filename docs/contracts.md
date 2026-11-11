@@ -120,7 +120,7 @@ external decision record tied to the exact request. A declaration in JSON cannot
 serve as proof. The [demonstration](../examples/contract_kernel.py) uses synthetic
 receipts and an interrupted run in a temporary workspace. The kernel checks
 the consistency of evidence and decisions. Independent execution and verification
-of real work belong to the future Validation Engine.
+of real work belong to the [Validation Engine](validation.md).
 
 The user retains authority over product changes and binding technology and
 interface decisions. The historical delegation used to finalize contract types
@@ -178,7 +178,19 @@ facts and requires renewed review for unfinished work. The
 records actual attempts and checks separately. Conservative reconciliation
 preserves old evidence through explicit lineage. Evidenced structural conflicts
 can publish bounded PRRs for Project Manager negotiation. General product
-evolution and independent Validation/Report retain their later-phase boundaries.
+evolution retains its later-phase boundary. Validation and
+[Report](report.md) provide their separately implemented services.
+
+## Report publication flow
+
+Report reads a coherent source snapshot and freezes a canonical ERC plus a
+private content-bound generation manifest. Technical reports publish through
+REPORT authority with null approval and NOT_REVIEWED acceptance. Current source
+and file guards protect publication, while the Kernel retains exact references,
+revision lineage, evidence identity and authority checks. ERCs have immutable
+revision history and no active pointer. Exact HUMAN review authority remains
+required for an accepted delivered report. The service adds no acceptance
+negotiation or progression gate.
 
 ## Related documentation
 

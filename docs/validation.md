@@ -244,6 +244,6 @@ through Workflow and audit the repaired candidate with the same VC when the
 approved criteria and methods are unchanged. Preserve each result's exact
 scope, evidence and limitations.
 
-Report and Evidence & Report Contract production, general product evolution
-and experimental-build promotion belong to later phases. Live Claude remains
-unverified.
+The [Report Engine](report.md) consolidates exact plans, results and retained
+evidence into immutable ERCs. General product evolution and experimental-build
+promotion belong to later phases. Live Claude remains unverified.

@@ -1,7 +1,7 @@
 # Agent instructions
 
 This repository contains the Corinthos Core foundation, Contract Kernel,
-Project Manager, Workflow, adapters and Validation, package version `0.1.0`.
+Project Manager, Workflow, adapters, Validation and Report, package version `0.1.0`.
 The product target is Core v0.1, based on product specification revision v0.2.
 Phase 0 established the foundation. Phase 0.1 covers the English-language migration,
 publication review, verification, and first public GitHub publication when authorized.
@@ -92,8 +92,15 @@ directly from approved sources and the Standard. Keep criterion-specific
 method review, candidate evaluation and Workflow implementation separate.
 Publish exact VC/VRC records through the Kernel using the trusted Validation
 context. A result records admissible evidence and a calculated gate.
-Human approval, product acceptance, Report and experimental-build promotion
-retain their separate boundaries.
+Human approval, product acceptance and experimental-build promotion retain
+their separate boundaries.
+
+Phase 5 follows the [Report guide](docs/report.md). Capture coherent source
+cutoffs, preserve exact candidate/result identities and publish immutable ERCs
+through REPORT authority. Keep historical facts separate from current proof
+eligibility. Ordinary reports remain NOT_REVIEWED. Never infer delivery or human
+acceptance from a technical gate. Use safe source projections, private generation
+manifests and recoverable exports, preserving all source contracts and events.
 
 Treat `urn:nukytera:contracts:1.0:*`, `nukytera-standard` and SQLite application
 ID `0x4E554B59` as durable identifiers. Keep the original document bytes,
@@ -124,6 +131,7 @@ python examples/contract_kernel.py
 python -m corinthos project --help
 python -m corinthos workflow --help
 python -m corinthos validation --help
+python -m corinthos report --help
 ```
 
 Verify imports and CLI behavior, valid Standard loading, and rejection of invalid,

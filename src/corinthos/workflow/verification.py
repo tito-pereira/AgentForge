@@ -18,6 +18,21 @@ from corinthos.contracts.artifacts import is_link, private_directory
 from corinthos.contracts.model import ID_PATTERN, canonical_json
 from corinthos.contracts.semantics import validate_semantics
 
+_SNAPSHOT_IGNORED_DIRECTORIES = frozenset(
+    {
+        ".git",
+        ".corinthos",
+        ".nukytera",
+        ".agentforge",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        "node_modules",
+        "build",
+        "dist",
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class CommandCheck:
@@ -206,47 +221,43 @@ def safe_workspace_path(root, relative, *, directory=False):
     return path
 
 
-def _digest_file(path):
+def _digest_file(path, *, max_bytes=67_108_864):
     info = path.lstat()
     if is_link(info) or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
         raise IntegrityError("Evidence requires an ordinary unlinked regular file.")
-    if info.st_size > 67_108_864:
+    if info.st_size > min(67_108_864, max_bytes):
         raise IntegrityError("A workspace file exceeds the bounded snapshot limit.")
     with path.open("rb") as stream:
         if not os.path.samestat(info, os.fstat(stream.fileno())):
             raise IntegrityError("A workspace file changed while opening its snapshot.")
-        digest = sha256(stream.read()).hexdigest()
-        if os.fstat(stream.fileno()).st_mtime_ns != info.st_mtime_ns:
+        content = stream.read(info.st_size + 1)
+        if (
+            len(content) != info.st_size
+            or os.fstat(stream.fileno()).st_mtime_ns != info.st_mtime_ns
+        ):
             raise IntegrityError("A workspace file changed during its snapshot.")
+        digest = sha256(content).hexdigest()
     return {"sha256": digest, "size": info.st_size}
 
 
-def workspace_snapshot(root):
+def workspace_snapshot(root, *, max_bytes=None, max_files=10_000):
     """Hash source files while excluding local state, environments and generated caches."""
+    if (max_bytes is not None and (type(max_bytes) is not int or max_bytes < 0)) or (
+        type(max_files) is not int or max_files < 1
+    ):
+        raise IntegrityError("Snapshot limits require nonnegative bytes and positive file counts.")
     root = Path(root)
     git_metadata = root / ".git"
     git_root = os.path.lexists(git_metadata)
     if git_root and is_link(git_metadata.lstat()):
         raise IntegrityError("A source snapshot cannot use linked Git metadata.")
-    files = {}
+    files, total = {}, 0
     for parent, directories, filenames in os.walk(root, followlinks=False):
         current = Path(parent)
         kept = []
         for name in sorted(directories):
             if (
-                name
-                in {
-                    ".git",
-                    ".corinthos",
-                    ".nukytera",
-                    ".agentforge",
-                    "__pycache__",
-                    ".pytest_cache",
-                    ".ruff_cache",
-                    "node_modules",
-                    "build",
-                    "dist",
-                }
+                name in _SNAPSHOT_IGNORED_DIRECTORIES
                 or name.startswith(".venv")
                 or name.endswith(".egg-info")
             ):
@@ -261,9 +272,11 @@ def workspace_snapshot(root):
             ):
                 continue
             path = current / name
-            files[path.relative_to(root).as_posix()] = _digest_file(path)
-            if len(files) > 10_000:
+            if len(files) >= max_files:
                 raise IntegrityError("The workspace exceeds the bounded source inventory limit.")
+            remaining = 67_108_864 if max_bytes is None else max_bytes - total
+            files[path.relative_to(root).as_posix()] = _digest_file(path, max_bytes=remaining)
+            total += files[path.relative_to(root).as_posix()]["size"]
     identity = {"snapshot_id": sha256(canonical_json(files).encode("utf-8")).hexdigest()}
     if not git_root:
         return {"artifact_identity": identity, "files": files}

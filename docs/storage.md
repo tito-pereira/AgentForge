@@ -303,3 +303,30 @@ and digests associated with the original records.
 SQLite commits only database state. Git operations, artifact writes and external
 tools have their own failure boundaries. An interrupted execution requires its
 own evidence inspection and reconciliation before retrying external work.
+
+## Report snapshots and recovery
+
+Phase 5 uses the existing v5 database and private artifacts. It adds no SQL
+tables or migration. Exact ERC revisions and publication events remain owned by
+the Kernel. Frozen captures and content-bound generation manifests occupy
+`artifacts/runtime/report-draft-*/frozen.json`, with an atomic publication receipt
+after the Kernel commit. An incomplete capture remains inspectable. Repeating
+publication reconciles the exact committed document before completing its receipt.
+
+One read transaction captures source documents, safe operational projections and
+event cutoffs. Source guards exclude Report's own rows/events, while preserving
+all original source states. Existing exact HUMAN acceptance reviews remain
+historical sources and participate in that guard. Bulk source checks and preliminary file hashing run
+before the writer reservation. Publication uses a connection-local SQLite
+`data_version` check to detect intervening commits, with bounded preflight retries,
+then stat guards before/after Kernel publication and the Kernel's indexed-evidence
+hash checks. Filesystem metadata and SQLite provide separate failure boundaries
+under the trusted local-account model.
+
+Current capture is bounded to 50,000 source rows/64 MiB, 8,192 candidate files/
+256 MiB and 2,048 evidence refs/32 MiB. Explicit historical cutoffs preserve
+reconstructible immutable history and declare unavailable mutable-state gaps.
+The [Report guide](report.md) describes publication, revisions, current integrity
+observations and safe export recovery. Keep all report artifacts and raw source
+proof private. Export completion manifests bind output hashes separately from
+the canonical ERC and its original evidence.

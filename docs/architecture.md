@@ -3,7 +3,7 @@
 Documentation baseline dated November 8, 2026. Product requirements revision v0.2
 targets Core v0.1. Package version `0.1.0` includes the Phase 0 foundation and
 Phase 1 Contract Kernel, Phase 2 Project Manager, Phase 3 Workflow + Adapters and
-Phase 4 Validation.
+Phase 4 Validation and Phase 5 Report.
 Phase 0.1 translates public materials into English and prepares public publication.
 Phase 1.1 establishes the Corinthos runtime names and private state path.
 The same requirements revision, product target, package version and Contract
@@ -18,7 +18,7 @@ Kernel architecture apply to Corinthos.
 | Project Manager | Negotiates goals and requirements with the user and publishes the approved Project Contract. | Structured service, guided terminal, durable sessions, exact human approval and bounded PRR intake exist. |
 | Workflow Engine | Plans modules, interfaces, technologies, and checkpoints; coordinates execution and change impact analysis. | Exact planning/publication, sequential checkpoint attempts, actual engineering checks, leased recovery and conservative reconciliation are implemented. |
 | Validation Engine | Independently audits local and global obligations against approved revisions. | Scope-derived matrices, reviewed executable and inspection procedures, durable runs, immutable results and technical gates are implemented. |
-| Report Engine | Consolidates results, decisions, and evidence references while preserving the authority of their sources. | Planned. |
+| Report Engine | Consolidates results, decisions, and evidence references while preserving the authority of their sources. | Consistent source capture, deterministic nine-section ERC composition, Kernel publication, history/comparison and private JSON/Markdown export are implemented. |
 
 The conceptual order is Standard → Adapter Manager → Project Manager → Workflow →
 Validation → Report. The approved connections also give Workflow and Validation
@@ -118,7 +118,17 @@ adequacy. The runner observes a verified candidate copy through bound procedures
 retains private evidence and derives an immutable result and scoped technical
 gate. Workflow checks that evidence before affected progression. Changes to
 product decisions and formal human acceptance retain their owner authority.
-Report and general product evolution remain later work.
+General product evolution remains later work.
+
+## Report boundary
+
+The [Report service](report.md) captures a coherent read snapshot, derives
+source-backed summaries and publishes immutable ERC revisions under REPORT
+authority. Current claims use complete applicable results, proof availability
+and exact candidate identity. Historical cutoffs preserve their source facts.
+The service keeps generation manifests private and provides safe exports and
+separate observations of current evidence integrity. Validation, Workflow and
+the owner retain their existing authorities.
 
 ## Related documentation
 
@@ -129,6 +139,7 @@ planning; contributors can use these local documents without private access.
 - [Engineering instructions](../AGENTS.md)
 - [Contract catalogue](contracts.md)
 - [Validation methods, evidence and gates](validation.md)
+- [Reports, source snapshots and export](report.md)
 - [Workflows and authority](workflows.md)
 - [Implementation plan](implementation-plan.md)
 - [Practical decisions and historical verification](decisions.md)
