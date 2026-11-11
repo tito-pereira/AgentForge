@@ -8,6 +8,7 @@ import stat
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -119,7 +120,7 @@ repository.transition(
 
 
 def _records(database, tables=_TABLES):
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection:
         return {
             table: connection.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
             for table in tables
@@ -127,7 +128,7 @@ def _records(database, tables=_TABLES):
 
 
 def _version(database):
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection:
         return connection.execute("PRAGMA user_version").fetchone()[0]
 
 
@@ -168,7 +169,7 @@ def test_actual_v3_upgrade_preserves_every_old_row_and_verified_backup(phase3_st
     before = _records(database)
     assert all(before[table] for table in _TABLES)
     store = ContractStore(phase3_state)
-    assert _version(database) == 5 and _records(database) == before
+    assert _version(database) == 6 and _records(database) == before
     (backup,) = database.parent.glob("state.pre-v4-*.db")
     assert _version(backup) == 3 and _records(backup) == before
     assert ProjectManager(phase3_state).list()[0]["state"] == "PUBLISHED"
@@ -204,7 +205,7 @@ def test_concurrent_v4_openers_create_one_verified_backup(phase3_state):
     before = _records(database)
     with ThreadPoolExecutor(max_workers=2) as pool:
         stores = list(pool.map(ContractStore, (phase3_state, phase3_state)))
-    assert len(stores) == 2 and _version(database) == 5 and _records(database) == before
+    assert len(stores) == 2 and _version(database) == 6 and _records(database) == before
     assert len(list(database.parent.glob("state.pre-v4-*.db"))) == 1
 
 
@@ -241,7 +242,7 @@ def test_populated_v4_rollback_and_upgrade_preserve_every_previous_record(tmp_pa
         ).fetchall()
 
     ContractStore(project)
-    assert _version(database) == 5 and _records(database, _TABLES_V4) == before
+    assert _version(database) == 6 and _records(database, _TABLES_V4) == before
     backups = list(database.parent.glob("state.pre-v5-*.db"))
     assert len(backups) == 2
     assert all(_version(item) == 4 and _records(item, _TABLES_V4) == before for item in backups)

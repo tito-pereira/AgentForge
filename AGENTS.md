@@ -108,6 +108,13 @@ approval receipts, evidence hashes and event order when migrating state.
 Follow the [storage migration procedure](docs/storage.md#migrating-existing-project-state)
 for each authorized project root.
 
+Phase 6 follows the [lifecycle guide](docs/evolution.md) and
+[build guide](docs/builds.md). Preserve immutable versions and observation origins,
+verified complete build identity, non-circular checkpoint/readiness/Validation
+stages, one project tracker/active build and inspected session pins. Keep genuine
+human consent distinct from operator and synthetic observations. Missing mandatory
+native proof remains open; use an incomplete/draft PR until verified.
+
 The initial validator is
 `corinthos.standard.load_standard(policy_path, schema_path)`. It accepts explicit
 paths to `policies/standard.yaml` and `schemas/standard.schema.json`. These are

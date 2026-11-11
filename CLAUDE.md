@@ -64,7 +64,11 @@ retain distinct authority. Phase 5 provides [source-backed reports](docs/report.
 with coherent cutoffs, immutable ERC publication, history/comparison and safe
 JSON/Markdown export. Preserve full candidate identities, source proof and
 separate technical/delivery/availability/acceptance states. Normal reports need
-no new human consent. Experimental-build promotion remains later work.
+no new human consent. Phase 6 implements [versioned evolution](docs/evolution.md)
+and [sealed builds](docs/builds.md), independent admission and session-safe
+promotion. Preserve exact candidate identity, cumulative scope, immutable feedback
+origins and inspected pins. Missing mandatory native evidence remains explicitly
+unverified; it does not establish full Core readiness.
 Follow the [storage migration procedure](docs/storage.md#migrating-existing-project-state)
 for each authorized project. Preserve the published bytes, approval receipts,
 evidence hashes, event order, and SQLite application and schema markers.

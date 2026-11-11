@@ -311,7 +311,7 @@ class ProjectManager:
             _validate_snapshot(turn["snapshot"])
         return history
 
-    def _new(self, payload, *, actor_id, base=None, reason, prr=None):
+    def _new(self, payload, *, actor_id, base=None, reason, prr=None, connection=None):
         metadata = None if base is None else base["metadata"]
         reference = None if base is None else ContractRef.from_document(base).to_json()
         snapshot = {
@@ -340,7 +340,9 @@ class ProjectManager:
             "used_ids": _payload_ids(payload),
             "created_at": datetime.now(UTC).isoformat(),
         }
-        return self.repository.create(snapshot, actor_id=actor_id, action="SESSION_STARTED")
+        return self.repository.create(
+            snapshot, actor_id=actor_id, action="SESSION_STARTED", connection=connection
+        )
 
     def start(self, idea, *, actor_id):
         payload = {
@@ -368,9 +370,11 @@ class ProjectManager:
             )
         return base
 
-    def revise(self, base_ref, reason, *, actor_id):
+    def revise(self, base_ref, reason, *, actor_id, connection=None):
         base = self._base(base_ref)
-        return self._new(base["payload"], actor_id=actor_id, base=base, reason=reason)
+        return self._new(
+            base["payload"], actor_id=actor_id, base=base, reason=reason, connection=connection
+        )
 
     def receive_prr(self, prr_ref, triage, *, actor_id):
         ref = prr_ref if isinstance(prr_ref, ContractRef) else ContractRef.from_json(prr_ref)

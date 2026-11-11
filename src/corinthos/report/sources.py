@@ -24,6 +24,7 @@ from corinthos.workflow.verification import (
 
 from .fileguard import prepare as _prepare_files
 from .fileguard import require_file_guard as require_file_guard
+from .lifecycle import project as project_lifecycle
 from .rendering import safe_prose
 
 _MAX_SOURCE_BYTES = 64 * 1024 * 1024
@@ -35,6 +36,9 @@ _MAX_CANDIDATE_BYTES = 256 * 1024 * 1024
 _MAX_CANDIDATE_FILES = 8_192
 _KINDS = {"CHECKPOINT", "MILESTONE", "PRODUCT", "HISTORY", "EVOLUTION"}
 _SOURCE_QUERIES = {
+    "lc_records": "SELECT * FROM lc_records WHERE project_id=? ORDER BY rowid",
+    "lc_projects": "SELECT * FROM lc_projects WHERE project_id=? ORDER BY rowid",
+    "lc_events": "SELECT * FROM lc_events WHERE project_id=? ORDER BY sequence",
     "contracts": "SELECT * FROM contracts WHERE project_id = ? AND contract_type != 'EVIDENCE_REPORT' ORDER BY rowid",
     "revisions": "SELECT r.* FROM revisions r JOIN contracts c USING(contract_id) WHERE c.project_id = ? AND c.contract_type != 'EVIDENCE_REPORT' ORDER BY r.rowid",
     "audit_events": "SELECT e.* FROM audit_events e JOIN revisions r USING(revision_id) JOIN contracts c USING(contract_id) WHERE c.project_id = ? AND c.contract_type != 'EVIDENCE_REPORT' ORDER BY e.sequence",
@@ -96,14 +100,26 @@ def _identity(value):
     return dict(value)
 
 
-def _candidate_snapshot(root):
+def _candidate_snapshot(root, store=None, identity=None):
     path = Path(root)
     info = path.lstat()
     if is_link(info) or not stat.S_ISDIR(info.st_mode):
         raise IntegrityError("A report candidate requires an ordinary existing directory.")
-    return workspace_snapshot(
-        path.resolve(strict=True), max_bytes=_MAX_CANDIDATE_BYTES, max_files=_MAX_CANDIDATE_FILES
+    sealed = identity is not None and "build_id" in identity
+    inventory = workspace_snapshot(
+        path.resolve(strict=True),
+        max_bytes=_MAX_CANDIDATE_BYTES,
+        max_files=_MAX_CANDIDATE_FILES,
+        include_ignored=sealed,
     )
+    if sealed:
+        from corinthos.lifecycle.builds import BuildService
+
+        verified = BuildService(store).identity_for_candidate(path, identity["build_id"])
+        if verified != identity:
+            raise IntegrityError("The sealed report candidate has another complete build identity.")
+        inventory["artifact_identity"] = verified
+    return inventory
 
 
 class _ReadView(ContractStore):
@@ -187,6 +203,25 @@ def _historical_watermark(rows, cutoff, revision_ids):
     ]
     selected["review_documents"] = [
         row for row in rows["review_documents"] if _review_before(row, cutoff)
+    ]
+    selected["lc_events"] = [
+        row for row in rows["lc_events"] if _date(row["occurred_at"]) <= cutoff
+    ]
+    selected["lc_records"] = [
+        {
+            key: row[key]
+            for key in (
+                "record_id",
+                "kind",
+                "project_id",
+                "logical_key",
+                "origin",
+                "origin_sha256",
+                "created_at",
+            )
+        }
+        for row in rows["lc_records"]
+        if _date(row["created_at"]) <= cutoff
     ]
     return _watermark(selected)
 
@@ -585,7 +620,11 @@ def capture(
         and (not isinstance(milestone_id, str) or not ID_PATTERN.fullmatch(milestone_id))
     ):
         raise IntegrityError("A scoped report needs its exact checkpoint set or milestone.")
-    inventory = _candidate_snapshot(candidate_root) if candidate_root is not None else None
+    inventory = (
+        _candidate_snapshot(candidate_root, store, artifact_identity)
+        if candidate_root is not None
+        else None
+    )
     identity = _identity(artifact_identity or (inventory["artifact_identity"] if inventory else {}))
     if inventory is not None and identity != inventory["artifact_identity"]:
         raise IntegrityError(
@@ -787,6 +826,7 @@ def capture(
                 )
             operations = _operations(view, rows, cutoff, historical)
             executions = _executions(rows, documents, cutoff, historical, captured_at.isoformat())
+            lifecycle = project_lifecycle(rows, cutoff.isoformat())
             watermark = (
                 _historical_watermark(rows, cutoff, documents) if historical else _watermark(rows)
             )
@@ -795,6 +835,15 @@ def capture(
                 if inventory
                 else None
             )
+            if candidate is not None and "build_id" in identity:
+                from corinthos.lifecycle.builds import BuildService
+
+                build = BuildService(store).get(identity["build_id"])
+                candidate["build_manifest"] = {
+                    "path": build["origin"]["manifest_path"],
+                    "sha256": build["origin"]["manifest_sha256"],
+                    "limit": 4 * 1024 * 1024,
+                }
             manifest = {
                 "version": 1,
                 "mode": "AS_OF" if historical else "CURRENT",
@@ -818,6 +867,7 @@ def capture(
                         "wf_execution_events",
                         "val_events",
                         "review_documents",
+                        "lc_events",
                     )
                 },
                 "candidate": candidate,
@@ -825,6 +875,7 @@ def capture(
                 "operations": operations,
                 "executions": executions,
                 "gates": gates,
+                "lifecycle": lifecycle,
             }
             requested_plans = {plan["metadata"]["revision_id"] for plan in plans}
             supporting = {}
@@ -851,6 +902,7 @@ def capture(
                 "evidence": evidence,
                 "operations": operations,
                 "executions": executions,
+                "lifecycle": lifecycle,
                 "gaps": gaps,
                 "artifact_identity": identity,
                 "as_of": cutoff.isoformat(),
@@ -861,7 +913,7 @@ def capture(
             }
         finally:
             connection.execute("ROLLBACK")
-    if inventory is not None and _candidate_snapshot(candidate_root) != inventory:
+    if inventory is not None and _candidate_snapshot(candidate_root, store, identity) != inventory:
         raise ConflictError("The report candidate changed during source capture.")
     return snapshot
 
@@ -873,7 +925,10 @@ def prepare_file_guard(store, manifest, *, extra_files=()):
         candidate = manifest.get("candidate")
         if (
             candidate is not None
-            and _candidate_snapshot(candidate["root"]) != candidate["inventory"]
+            and _candidate_snapshot(
+                candidate["root"], store, candidate["inventory"]["artifact_identity"]
+            )
+            != candidate["inventory"]
         ):
             raise ConflictError("The report candidate changed after capture.")
         observed = _proof(
@@ -884,14 +939,36 @@ def prepare_file_guard(store, manifest, *, extra_files=()):
         ]:
             raise ConflictError("Required report evidence changed after capture.")
 
-    return _prepare_files(store, manifest, verify, extra_files=extra_files)
+    build_manifest = (
+        manifest.get("candidate", {}).get("build_manifest") if manifest.get("candidate") else None
+    )
+    return _prepare_files(
+        store,
+        manifest,
+        verify,
+        extra_files=tuple(extra_files) + ((build_manifest,) if build_manifest else ()),
+    )
 
 
-def require_unchanged(store, connection, snapshot_or_manifest, *, extra_files=()):
+def require_unchanged(
+    store, connection, snapshot_or_manifest, *, extra_files=(), ignored_record_ids=()
+):
     """Recheck pinned source state before a writer reservation and return its file guard."""
     manifest = snapshot_or_manifest.get("manifest", snapshot_or_manifest)
     project_ref = _reference(manifest["project_ref"])
     rows = _rows(connection, project_ref.project_id)
+    if ignored_record_ids:
+        ignored = set(ignored_record_ids)
+        actual = {row["record_id"]: row for row in rows["lc_records"]}
+        if any(
+            item not in actual or actual[item]["kind"] not in {"REVIEW", "OPERATION"}
+            for item in ignored
+        ):
+            raise IntegrityError(
+                "Review source exclusions require exact same-project review records."
+            )
+        rows["lc_records"] = [row for row in rows["lc_records"] if row["record_id"] not in ignored]
+        rows["lc_events"] = [row for row in rows["lc_events"] if row["record_id"] not in ignored]
     watermark = (
         _watermark(rows)
         if manifest["mode"] == "CURRENT"
@@ -901,6 +978,9 @@ def require_unchanged(store, connection, snapshot_or_manifest, *, extra_files=()
             {source["ref"]["revision_id"] for source in manifest["source_documents"]},
         )
     )
+    for table in ("lc_records", "lc_projects", "lc_events"):
+        if table not in manifest["source_watermark"] and watermark.get(table, {}).get("rows") == 0:
+            watermark.pop(table, None)
     if watermark != manifest["source_watermark"]:
         raise ConflictError(
             "Report sources changed after capture. Generate a new coherent snapshot."

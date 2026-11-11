@@ -101,16 +101,19 @@ def _verify_extra(item):
         raise IntegrityError("An additional report source no longer has its recorded digest.")
 
 
-def _tree(root):
+def _tree(root, *, include_ignored=False):
     result, count = [], 0
     for parent, directories, filenames in os.walk(root, followlinks=False):
         current = Path(parent)
         kept = [
             name
             for name in sorted(directories)
-            if name not in _SNAPSHOT_IGNORED_DIRECTORIES
-            and not name.startswith(".venv")
-            and not name.endswith(".egg-info")
+            if include_ignored
+            or (
+                name not in _SNAPSHOT_IGNORED_DIRECTORIES
+                and not name.startswith(".venv")
+                and not name.endswith(".egg-info")
+            )
         ]
         for name in kept:
             if is_link((current / name).lstat()):
@@ -119,7 +122,8 @@ def _tree(root):
         files = [
             name
             for name in sorted(filenames)
-            if not name.endswith((".pyc", ".pyo")) and not (current == root and name == ".git")
+            if include_ignored
+            or (not name.endswith((".pyc", ".pyo")) and not (current == root and name == ".git"))
         ]
         count += len(files)
         if count > 8192:
@@ -216,10 +220,13 @@ def _git_paths(candidate):
         raise IntegrityError("The exact Git metadata cannot be guarded safely.") from None
 
 
-def _observe(paths, candidate_root):
+def _observe(paths, candidate_root, *, include_ignored=False):
     return {
         "files": [{"path": str(path), "metadata": _metadata(path)} for path in paths],
-        "tree": _tree(candidate_root) if candidate_root is not None else [],
+        "tree": _tree(candidate_root, include_ignored=include_ignored)
+        if candidate_root is not None
+        else [],
+        "include_ignored": include_ignored,
     }
 
 
@@ -240,13 +247,14 @@ def prepare(store, manifest, verify_inputs, *, extra_files=()):
         git_paths = _git_paths(candidate)
         paths.extend(git_paths)
     paths = sorted(set(paths), key=str)
-    before = _observe(paths, root)
+    sealed = candidate is not None and "build_id" in candidate["inventory"]["artifact_identity"]
+    before = _observe(paths, root, include_ignored=sealed)
     verify_inputs()
     for item in extras:
         _verify_extra(item)
     if candidate is not None and _git_paths(candidate) != git_paths:
         raise ConflictError("Git metadata indirection changed during report preflight.")
-    after = _observe(paths, root)
+    after = _observe(paths, root, include_ignored=sealed)
     if after != before:
         raise ConflictError("Report file identities changed during publication preflight.")
     return after
@@ -260,7 +268,14 @@ def require_file_guard(guard):
             for item in guard["files"]
         ]
         root = Path(guard["tree"][0]["path"]) if guard["tree"] else None
-        if {"files": files, "tree": _tree(root) if root is not None else []} != guard:
+        sealed = guard.get("include_ignored", False)
+        actual = {
+            "files": files,
+            "tree": _tree(root, include_ignored=sealed) if root is not None else [],
+        }
+        if "include_ignored" in guard:
+            actual["include_ignored"] = sealed
+        if actual != guard:
             raise ConflictError("Report source file metadata changed before publication.")
     except (OSError, KeyError, TypeError):
         raise ConflictError("Report source files became unavailable before publication.") from None

@@ -215,6 +215,10 @@ document = reports.get(published_ref)
 `compare`, `manifest`, `verify` and `recover`. Exact service methods use
 `ContractRef` values. `manifest` is a private owner-facing provenance view,
 authenticated against the published ERC. Normal terminal output does not dump it.
-See the [storage guide](storage.md) for the unchanged v5 database and artifact
-failure boundaries. Full evolution, feedback and experimental-build lifecycle
-remain Phase 6. Live Claude remains unverified.
+See the [storage guide](storage.md) for v6 lifecycle persistence and artifact
+failure boundaries, and the [evolution guide](evolution.md) for native version,
+session, feedback and review sources. Historical lifecycle snapshots reconstruct
+post-state events rather than backdating mutable rows. Current generation guards
+include lifecycle sources; the optional exact PM review excludes only its own
+identified review/consent records. Ordinary reports remain `NOT_REVIEWED`.
+Live Claude Code interoperability remains unverified.

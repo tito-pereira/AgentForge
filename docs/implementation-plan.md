@@ -196,7 +196,11 @@ where required.
 Phase 2 provides human-led Project negotiation and Phase 3 adds planning,
 Adapter Manager, sequential execution and bounded reconciliation. Phase 4
 provides independent audit and formal scoped results. Phase 5 consolidates those
-facts into reports. General product evolution remains a later responsibility.
+facts into reports. Phase 6 adds delivered versions, bounded evolution, sealed
+cumulative candidates, independent playtest admission, sessions, feedback and
+recoverable retention. See [lifecycle](evolution.md), [design](phase-6-design.md)
+and [requirement evidence](phase-6-coverage.md). Mandatory live native provider
+proof, actual pilot decisions and final review remain distinct completion gates.
 The owner separately authorizes integration and subsequent construction phases.
 
 The delivered Phase 3 task manager provides a separate candidate for independent

@@ -114,7 +114,15 @@ def _observe_file(path, limit):
         raise IntegrityError("The delivery source is unavailable.") from None
 
 
-def observe_delivery(path, project_ref, artifact_identity, *, candidate_root=None, executions=()):
+def observe_delivery(
+    path,
+    project_ref,
+    artifact_identity,
+    *,
+    candidate_root=None,
+    executions=(),
+    observe_availability=True,
+):
     """Import only verified package/version and observed local launcher availability."""
     empty = {
         "product_version": "UNRECORDED",
@@ -198,7 +206,9 @@ def observe_delivery(path, project_ref, artifact_identity, *, candidate_root=Non
         available = False
         gaps = []
         launcher = document.get("installed", {}).get("launcher")
-        if launcher:
+        if not observe_availability:
+            gaps.append("Current launcher availability was deliberately not inspected.")
+        elif launcher:
             try:
                 observed.append(_observe_file(launcher, 4 * 1024 * 1024))
                 available = True

@@ -18,6 +18,7 @@ from corinthos.contracts.model import ID_PATTERN
 
 from .composition import compose
 from .delivery import observe_delivery
+from .lifecycle import delivery as lifecycle_delivery
 from .rendering import render_markdown, safe_prose
 from .repository import ReportRepository, content_digest
 from .sources import capture, require_file_guard, require_unchanged
@@ -134,7 +135,8 @@ class ReportService:
             milestone_id=milestone_id,
             as_of=as_of,
         )
-        delivery = observe_delivery(
+        delivery = lifecycle_delivery(snapshot) if delivery_record is None else None
+        delivery = delivery or observe_delivery(
             delivery_record if snapshot["mode"] == "CURRENT" else None,
             project_ref,
             snapshot["artifact_identity"],
@@ -243,6 +245,44 @@ class ReportService:
 
     def drafts(self):
         return self.repository.list_drafts()
+
+    def require_review_source(self, draft_id, *, connection, ignored_record_ids=()):
+        package = self.repository.get(draft_id)
+        if ignored_record_ids:
+            from corinthos.lifecycle.repository import LifecycleRepository
+
+            repository = LifecycleRepository(self.store)
+            records = [
+                repository.find(kind, identity, connection=connection)
+                for identity in ignored_record_ids
+                for kind in ("REVIEW", "OPERATION")
+            ]
+            records = [record for record in records if record is not None]
+            reviews = [record for record in records if record["kind"] == "REVIEW"]
+            if (
+                len(reviews) != 1
+                or len(records) != len(set(ignored_record_ids))
+                or reviews[0]["origin"].get("purpose") != "PRODUCT_ACCEPTANCE"
+                or reviews[0]["origin"].get("source_draft_id") != draft_id
+                or any(
+                    record["kind"] == "OPERATION"
+                    and (
+                        record["origin"].get("operation") != "HUMAN_PRODUCT_CONSENT"
+                        or record["origin"].get("review_id") != reviews[0]["record_id"]
+                    )
+                    for record in records
+                )
+            ):
+                raise IntegrityError(
+                    "Review exclusions must identify only this source review and its consent receipt."
+                )
+        return require_unchanged(
+            self.store,
+            connection,
+            package["manifest"]["source_manifest"],
+            extra_files=package["manifest"]["delivery_provenance"].get("files", []),
+            ignored_record_ids=ignored_record_ids,
+        )
 
     def draft(self, draft_id):
         package = self.repository.get(draft_id)

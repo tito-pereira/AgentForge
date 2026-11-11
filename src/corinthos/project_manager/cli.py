@@ -33,6 +33,7 @@ def configure_parser(parser: argparse.ArgumentParser):
         "history": "Show accepted turns and decisions.",
         "revise": "Negotiate a change to a published Project Contract.",
         "request": "Review a published Project Revision Request.",
+        "advise": "Explicitly request native advisory assistance for one saved session.",
     }.items():
         action = actions.add_parser(name, help=description, description=description)
         action.add_argument(
@@ -45,7 +46,30 @@ def configure_parser(parser: argparse.ArgumentParser):
             action.add_argument(
                 "session_id", nargs="?", help="Saved session ID, or select from a list."
             )
+        if name == "advise":
+            action.add_argument("--provider", required=True, choices=("codex", "claude"))
+            action.add_argument("--timeout", type=float, default=60)
+            action.add_argument("--operation", help="Stable advice operation ID for safe retries.")
         action.set_defaults(handler=run)
+    product = actions.add_parser(
+        "product-review", help="Optionally review one exact delivered version."
+    )
+    product.add_argument("--root", type=Path, default=argparse.SUPPRESS)
+    review_actions = product.add_subparsers(dest="product_review_action", required=True)
+    for name in ("start", "list", "show", "freeze", "approve", "defer"):
+        action = review_actions.add_parser(name)
+        action.add_argument("--root", type=Path, default=argparse.SUPPRESS)
+        if name == "start":
+            action.add_argument("version_id")
+            action.add_argument(
+                "--decision", required=True, choices=("ACCEPTED", "WITH_RESERVATIONS")
+            )
+            action.add_argument("--observation", action="append", default=[])
+        elif name == "list":
+            action.add_argument("project_id")
+        else:
+            action.add_argument("review_id")
+        action.set_defaults(handler=run_product_review)
     return commands
 
 
@@ -456,6 +480,20 @@ def run(arguments: argparse.Namespace) -> int:
                 _approve(manager, snapshot)
             elif action == "history":
                 print(render_fields(manager.history(snapshot["session_id"])))
+            elif action == "advise":
+                from .advice import advise
+
+                print(
+                    render_fields(
+                        advise(
+                            manager,
+                            snapshot["session_id"],
+                            provider=arguments.provider,
+                            timeout=arguments.timeout,
+                            operation_id=arguments.operation,
+                        )
+                    )
+                )
             else:
                 operation = manager.defer if action == "defer" else manager.cancel
                 snapshot = operation(snapshot["session_id"], snapshot["version"], actor_id=actor)
@@ -471,4 +509,48 @@ def run(arguments: argparse.Namespace) -> int:
         return 1
     except OSError:
         print("Project operation could not access its local files or terminal.", file=sys.stderr)
+        return 1
+
+
+def run_product_review(arguments: argparse.Namespace) -> int:
+    from .product_review import ProductReviewService
+
+    try:
+        service = ProductReviewService(arguments.root)
+        actor = local_actor_id()
+        action = arguments.product_review_action
+        if action == "start":
+            result = service.start(
+                arguments.version_id,
+                decision=arguments.decision,
+                observations=arguments.observation,
+                actor_id=actor,
+            )
+        elif action == "list":
+            result = service.list(arguments.project_id)
+        else:
+            record = service.get(arguments.review_id)
+            if action == "show":
+                result = record
+            elif action == "freeze":
+                result = service.freeze(arguments.review_id, record["version"], actor_id=actor)
+            elif action == "approve":
+                result = service.approve_interactively(arguments.review_id, record["version"])
+            else:
+                result = service.defer(arguments.review_id, record["version"], actor_id=actor)
+        print(render_fields(result))
+        return 0
+    except (EOFError, KeyboardInterrupt):
+        print(
+            "\nProduct review stopped. Saved content is retained; approval requires a fresh terminal challenge."
+        )
+        return 130
+    except ContractError as error:
+        print("Product review failed. " + safe_text(error), file=sys.stderr)
+        return 1
+    except OSError:
+        print(
+            "Product review could not access its local files or foreground terminal.",
+            file=sys.stderr,
+        )
         return 1

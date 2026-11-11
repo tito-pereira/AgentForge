@@ -7,7 +7,9 @@ different agents, initially Codex and Claude Code.
 
 The implementation includes the **Phase 0 foundation**, **Phase 1 Contract
 Kernel**, **Phase 2 Project Manager**, **Phase 3 Workflow + Adapters**,
-**Phase 4 Validation Engine** and **Phase 5 Report Engine**, with package version `0.1.0`.
+**Phase 4 Validation Engine**, **Phase 5 Report Engine** and the **Phase 6 lifecycle
+candidate**, with package version `0.1.0`. The [Phase 6 verification record](docs/phase-6-verification.md)
+separates implemented behavior from required proof that remains open.
 Phase 0 established English-language public
 development, clean Windows and Linux environments and MPL 2.0.
 The product target remains Core v0.1, based on product specification revision v0.2.
@@ -51,7 +53,10 @@ negotiation. Adapter Manager has separate Codex and Claude provider boundaries.
 Workflow supports engineering planning, sequential execution and inspected
 recovery. Validation derives independent plans and publishes scoped results
 for Workflow to consume. Report consolidates exact source facts and history.
-Experimental-build promotion remains subsequent work.
+Phase 6 adds [delivered versions and Interactive Project Evolution](docs/evolution.md),
+with isolated cumulative builds, independent admission, session-safe promotion,
+source-bound feedback and optional exact product review. Mandatory live Claude
+Code interoperability remains unverified; full Core completion is not claimed.
 Natural-language consistency and technical feasibility require human review.
 
 ## Five Engineering Commandments
