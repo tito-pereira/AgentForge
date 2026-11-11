@@ -198,10 +198,17 @@ class ValidationRunner:
         if build_id is not None:
             from corinthos.lifecycle.builds import BuildService
 
-            identity = BuildService(self.store).identity_for_candidate(candidate, build_id)
+            builds = BuildService(self.store)
+            identity = builds.identity_for_candidate(candidate, build_id)
+            build = builds.get(build_id)
+            manifest = builds._manifest(build)
             if snapshot["artifact_identity"].get("snapshot_id") != identity.get("snapshot_id"):
                 raise IntegrityError("The build changed during candidate observation.")
             snapshot["artifact_identity"] = identity
+            snapshot["build_source"] = {
+                "artifact_identity": manifest["request"]["source_snapshot"]["artifact_identity"],
+                "manifest_sha256": build["origin"]["manifest_sha256"],
+            }
         return snapshot
 
     def _plan(self, plan_ref):
@@ -409,11 +416,14 @@ class ValidationRunner:
             "CONFORMANT",
             "NONCONFORMANT",
         }
+        implementation_commit = snapshot["artifact_identity"].get("commit") or snapshot.get(
+            "build_source", {}
+        ).get("artifact_identity", {}).get("commit")
         for kind in row["required_evidence"]:
             if kind == "Independent review record" and not review_observed:
                 continue
             if kind == COMPOUND_EVIDENCE and not (
-                command_observed and review_observed and snapshot["artifact_identity"].get("commit")
+                command_observed and review_observed and implementation_commit
             ):
                 continue
             kinds.append(kind)
@@ -425,6 +435,9 @@ class ValidationRunner:
             ref = {**exact, "evidence_kind": kind, "evidence_id": eid}
             envelope = {
                 **ref,
+                **(
+                    {"build_source": snapshot["build_source"]} if "build_source" in snapshot else {}
+                ),
                 "observed_at": _now(),
                 "binding_sha256": digest(binding),
                 "observations": observation,

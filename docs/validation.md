@@ -82,7 +82,7 @@ the typed procedure mapping, adequacy reviews and Standard digest.
 | --- | --- |
 | `Independent check observation` | A reviewed executable observation, exact inspected files, or both as appropriate to the criterion. |
 | `Independent review record` | Inspection of bound candidate-relative files with actual findings. |
-| `Observed check results and a technical review tied to the implementation commit.` | A command observation and independent inspection on a snapshot that includes a verified Git commit. |
+| `Observed check results and a technical review tied to the implementation commit.` | A command observation and independent inspection tied to a verified Git source snapshot, directly or through a verified sealed build manifest. |
 
 Bind a direct executable and separate arguments. The executable and absolute
 evaluator inputs are pinned by digest. Each `{candidate}` or `{scratch}`
@@ -130,6 +130,12 @@ state up to a 256 MiB copy limit, observes that isolated copy and checks for
 drift. Commands get separate scratch data, bounded output, time and process
 ownership. Native OS policy or caller isolation governs which files the
 evaluator process can access.
+
+For a sealed Build, Validation verifies the owned candidate and manifest before
+using the original source snapshot's Git commit for compound evidence. The
+candidate retains its complete build identity; the evidence envelope records
+the source identity and manifest hash separately as `build_source`. A supplied
+build ID or a file claiming a source commit cannot establish this provenance.
 
 A completed command or inspection can support `CONFORMANT` or
 `NONCONFORMANT` when the planned evidence is sufficient. Missing, interrupted

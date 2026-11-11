@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import subprocess
 import sys
 import threading
 from dataclasses import replace
@@ -15,6 +16,7 @@ from test_workflow_runtime import SyntheticAdapter, _accept
 
 from corinthos.contracts import ConflictError, IntegrityError
 from corinthos.lifecycle.builds import BuildService
+from corinthos.validation.procedures import COMPOUND_EVIDENCE, file_hash
 from corinthos.validation.runtime import ValidationRunner
 from corinthos.workflow.build_cli import add_cli
 from corinthos.workflow.runtime import WorkflowRunner
@@ -408,6 +410,95 @@ def test_old_raw_result_cannot_be_relabelled_as_a_build_audit(built):
     assert identity["snapshot_id"] == build["origin"]["artifact_identity"]["snapshot_id"]
     with pytest.raises(ConflictError, match="missing or unfinished"):
         _admit(service, build)
+
+
+@pytest.mark.parametrize("git_source", [False, True])
+def test_compound_evidence_requires_verified_build_source_commit(built, tmp_path, git_source):
+    service, _, planner, refs, execution, _ = built
+    (tmp_path / "source_commit.json").write_text(
+        json.dumps({"source_commit": "a" * 40}), encoding="utf-8"
+    )
+    if git_source:
+        subprocess.run(["git", "-C", str(tmp_path), "init", "--quiet"], check=True)
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "add", "README.md", "source_commit.json"], check=True
+        )
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(tmp_path),
+                "-c",
+                "user.name=Synthetic test",
+                "-c",
+                "user.email=tests@example.invalid",
+                "commit",
+                "--quiet",
+                "-m",
+                "Test build source",
+            ],
+            check=True,
+        )
+    build = service.prepare(refs["workflow"], "early", execution["execution_id"], tmp_path)
+    candidate = Path(build["origin"]["candidate_root"])
+    assert not (candidate / ".git").exists()
+    assert "commit" not in build["origin"]["artifact_identity"]
+    _ready(service, build)
+    draft = planner.derive(
+        refs["project"], "PLAYTEST_MILESTONE", target_ref=refs["workflow"], target_ids=["early"]
+    )
+    bindings = _bindings(draft)
+    for binding in bindings.values():
+        binding["required_evidence"] = [*binding["required_evidence"], COMPOUND_EVIDENCE]
+        binding["command"] = {
+            "argv": [
+                _PYTHON,
+                "-I",
+                "-B",
+                "-c",
+                "from pathlib import Path; import sys; "
+                "assert (Path(sys.argv[1])/'README.md').read_text() == 'Hello Ada'; "
+                "print('BUILD_OBSERVED')",
+                "{candidate}",
+            ],
+            "timeout": 15,
+            "inputs": {_PYTHON: file_hash(_PYTHON)},
+            "success_line": "BUILD_OBSERVED",
+            "failure_line": None,
+        }
+    plan = planner.publish(
+        draft, bindings, _assess(draft, bindings), actor_id="synthetic-validation-planner"
+    )
+    runner = ValidationRunner(service.store)
+    options = {"evaluator": "synthetic-independent-evaluator", "reviewer": _review}
+    raw = service.store.get(runner.run(plan, candidate, **options))["payload"]
+    assert raw["gate_assessment"]["state"] == "BLOCKED"
+    with pytest.raises(IntegrityError):
+        runner.run(plan, candidate, build_id="missing-build", **options)
+    result = service.store.get(service.validate(build["record_id"], plan, **options))["payload"]
+    assert result["gate_assessment"]["state"] == ("SATISFIED" if git_source else "BLOCKED")
+    compound = [
+        item for item in result["evidence_refs"] if item["evidence_kind"] == COMPOUND_EVIDENCE
+    ]
+    assert bool(compound) == git_source
+    if git_source:
+        source_identity = build["origin"]["source_snapshot"]["artifact_identity"]
+        assert source_identity["commit"] != "a" * 40
+        for evidence in compound:
+            envelope = json.loads(
+                (service.store.database_path.parent / "artifacts" / evidence["path"]).read_text()
+            )
+            assert envelope["build_source"] == {
+                "artifact_identity": source_identity,
+                "manifest_sha256": build["origin"]["manifest_sha256"],
+            }
+            assert evidence["artifact_identity"] == build["origin"]["artifact_identity"]
+        manifest = Path(build["origin"]["manifest_path"])
+        altered = json.loads(manifest.read_text())
+        altered["request"]["source_snapshot"]["artifact_identity"]["commit"] = "b" * 40
+        manifest.write_text(json.dumps(altered), encoding="utf-8")
+        with pytest.raises(IntegrityError, match="manifest changed"):
+            runner.run(plan, candidate, build_id=build["record_id"], **options)
 
 
 def test_build_frozen_publication_rechecks_the_sealed_identity(built, monkeypatch):
