@@ -12,15 +12,23 @@ def main(argv: list[str] | None = None) -> int:
         description="Corinthos Core - contracts and human-led project negotiation.",
     )
     parser.add_argument("--version", action="version", version=f"corinthos {__version__}")
+    from corinthos.bootstrap import add_cli as configure_bootstrap
+    from corinthos.lifecycle.playtest_cli import add_cli as configure_playtest
+    from corinthos.lifecycle.version_cli import add_cli as configure_version
     from corinthos.project_manager.cli import configure_parser
     from corinthos.report.cli import configure_parser as configure_report_parser
     from corinthos.validation.cli import configure_parser as configure_validation_parser
+    from corinthos.workflow.build_cli import add_cli as configure_build
     from corinthos.workflow.cli import configure_parser as configure_workflow_parser
 
     commands = configure_parser(parser)
     configure_workflow_parser(commands)
     configure_validation_parser(commands)
     configure_report_parser(commands)
+    configure_bootstrap(commands)
+    configure_build(commands)
+    configure_playtest(commands)
+    configure_version(commands)
     arguments = parser.parse_args(argv)
     if hasattr(arguments, "handler"):
         return arguments.handler(arguments)

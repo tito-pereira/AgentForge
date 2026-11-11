@@ -106,7 +106,7 @@ def test_real_phase2_upgrade_preserves_contracts_sessions_turns_and_approval(pha
     database = phase2_state / ".corinthos/state.db"
     original = _records(database)
     store = ContractStore(phase2_state)
-    assert _version(database) == 5
+    assert _version(database) == 6
     assert _records(database) == original
     backups = list(database.parent.glob("state.pre-v3-*.db"))
     assert len(backups) == 1 and _version(backups[0]) == 2

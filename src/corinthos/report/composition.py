@@ -8,6 +8,7 @@ from corinthos.contracts import ContractRef, IntegrityError
 from corinthos.contracts.model import ID_PATTERN, canonical_json
 from corinthos.contracts.semantics import _module_checks, _obligation_key
 
+from .lifecycle import summary as lifecycle_summary
 from .rendering import safe_prose
 
 _KINDS = {"CHECKPOINT", "MILESTONE", "PRODUCT", "HISTORY", "EVOLUTION"}
@@ -500,6 +501,8 @@ def compose(snapshot, request):
     )
     notes.extend(_contract_history(snapshot))
     notes.extend(_review_history(snapshot))
+    lifecycle_notes, feedback = lifecycle_summary(snapshot)
+    notes.extend(lifecycle_notes)
     observation_notes, observation_gaps = _executable_observations(snapshot)
     notes.extend(observation_notes)
     gaps.extend(observation_gaps)
@@ -563,7 +566,7 @@ def compose(snapshot, request):
             "notes": [safe_prose(note) for note in notes],
         },
         "artifact_and_evidence_index": evidence,
-        "feedback_and_acceptance": {"review_approval_id": None, "feedback": []},
+        "feedback_and_acceptance": {"review_approval_id": None, "feedback": feedback},
         "risks_metrics_and_next_actions": {
             "risks": sorted(set(gaps)),
             "metrics": _metrics(selected),

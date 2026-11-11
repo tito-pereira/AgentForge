@@ -26,8 +26,8 @@ A local result covers its declared obligations. A product matrix also requires
 global Project requirements, constraints, success criteria and applicable
 Workflow sources. Green local tests do not discharge omitted global obligations.
 Validation assesses a milestone candidate's technical readiness. Workflow
-coordinates Build Readiness, while experimental-build promotion remains a later
-phase.
+coordinates Build Readiness; [playtest promotion](evolution.md) consumes its
+separate current admission gates.
 
 ## Derive and review a plan
 
@@ -82,7 +82,7 @@ the typed procedure mapping, adequacy reviews and Standard digest.
 | --- | --- |
 | `Independent check observation` | A reviewed executable observation, exact inspected files, or both as appropriate to the criterion. |
 | `Independent review record` | Inspection of bound candidate-relative files with actual findings. |
-| `Observed check results and a technical review tied to the implementation commit.` | A command observation and independent inspection on a snapshot that includes a verified Git commit. |
+| `Observed check results and a technical review tied to the implementation commit.` | A command observation and independent inspection tied to a verified Git source snapshot, directly or through a verified sealed build manifest. |
 
 Bind a direct executable and separate arguments. The executable and absolute
 evaluator inputs are pinned by digest. Each `{candidate}` or `{scratch}`
@@ -130,6 +130,12 @@ state up to a 256 MiB copy limit, observes that isolated copy and checks for
 drift. Commands get separate scratch data, bounded output, time and process
 ownership. Native OS policy or caller isolation governs which files the
 evaluator process can access.
+
+For a sealed Build, Validation verifies the owned candidate and manifest before
+using the original source snapshot's Git commit for compound evidence. The
+candidate retains its complete build identity; the evidence envelope records
+the source identity and manifest hash separately as `build_source`. A supplied
+build ID or a file claiming a source commit cannot establish this provenance.
 
 A completed command or inspection can support `CONFORMANT` or
 `NONCONFORMANT` when the planned evidence is sufficient. Missing, interrupted
@@ -245,5 +251,7 @@ approved criteria and methods are unchanged. Preserve each result's exact
 scope, evidence and limitations.
 
 The [Report Engine](report.md) consolidates exact plans, results and retained
-evidence into immutable ERCs. General product evolution and experimental-build
-promotion belong to later phases. Live Claude remains unverified.
+evidence into immutable ERCs. The [lifecycle guide](evolution.md) covers delivered
+versions, evolution and optional product review; the [build guide](builds.md)
+covers sealed identity, readiness and playtest admission. Live Claude remains
+unverified.

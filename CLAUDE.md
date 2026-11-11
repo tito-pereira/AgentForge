@@ -64,7 +64,15 @@ retain distinct authority. Phase 5 provides [source-backed reports](docs/report.
 with coherent cutoffs, immutable ERC publication, history/comparison and safe
 JSON/Markdown export. Preserve full candidate identities, source proof and
 separate technical/delivery/availability/acceptance states. Normal reports need
-no new human consent. Experimental-build promotion remains later work.
+no new human consent. Phase 6 implements [versioned evolution](docs/evolution.md)
+and [sealed builds](docs/builds.md), independent admission and session-safe
+promotion. Preserve exact candidate identity, cumulative scope, immutable feedback
+origins and inspected pins. The owner's Phase 6.1 delivery exception waives the
+remaining pilot end-to-end proof and comparable live Claude Code proof as delivery
+gates. Preserve `NOT_COMPLETED` / `NOT_VERIFIED` and acceptance `NOT_REVIEWED`;
+do not infer runtime Validation, promotion or full Core/PRD completion. PR readiness
+depends on the authorized engineering checks. The future field test is outside
+this delivery gate; Bench, GUI and SaaS remain out of scope.
 Follow the [storage migration procedure](docs/storage.md#migrating-existing-project-state)
 for each authorized project. Preserve the published bytes, approval receipts,
 evidence hashes, event order, and SQLite application and schema markers.

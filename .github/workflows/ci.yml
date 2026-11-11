@@ -109,6 +109,8 @@ jobs:
           ${{ matrix.python }} -m corinthos report compare --help
       - name: Run all tests
         run: ${{ matrix.python }} -m pytest
+      - name: Verify installed lifecycle outside checkout
+        run: ${{ matrix.python }} -I -B examples/installed_bootstrap.py
       - name: Run the contract kernel demonstration
         run: ${{ matrix.python }} examples/contract_kernel.py
       - name: Check lint

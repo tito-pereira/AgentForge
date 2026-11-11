@@ -96,20 +96,24 @@ class SessionRepository:
             ),
         )
 
-    def create(self, snapshot: dict, *, actor_id: str, action: str) -> dict:
+    def create(self, snapshot: dict, *, actor_id: str, action: str, connection=None) -> dict:
         """Create version 1 and its first accepted turn atomically."""
         if type(snapshot) is not dict or type(snapshot.get("version", 1)) is not int:
             raise StoreError("A new session requires version 1.")
         if snapshot.get("version", 1) != 1:
             raise StoreError("A new session requires version 1.")
         saved = _snapshot(snapshot, version=1)
-        with self.store._transaction() as connection:
-            connection.execute(
-                f"INSERT INTO {self._sessions_table} (session_id, project_id, version, snapshot) "
-                "VALUES (?, ?, ?, ?)",
-                (saved["session_id"], saved["project_id"], 1, canonical_json(saved)),
-            )
-            self._turn(connection, saved, actor_id, action)
+        if connection is None:
+            with self.store._transaction() as writer:
+                return self.create(snapshot, actor_id=actor_id, action=action, connection=writer)
+        if not connection.in_transaction:
+            raise StoreError("Session creation requires an active shared transaction.")
+        connection.execute(
+            f"INSERT INTO {self._sessions_table} (session_id, project_id, version, snapshot) "
+            "VALUES (?, ?, ?, ?)",
+            (saved["session_id"], saved["project_id"], 1, canonical_json(saved)),
+        )
+        self._turn(connection, saved, actor_id, action)
         return saved
 
     def get(self, session_id: str) -> dict:

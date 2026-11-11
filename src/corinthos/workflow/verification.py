@@ -240,7 +240,7 @@ def _digest_file(path, *, max_bytes=67_108_864):
     return {"sha256": digest, "size": info.st_size}
 
 
-def workspace_snapshot(root, *, max_bytes=None, max_files=10_000):
+def workspace_snapshot(root, *, max_bytes=None, max_files=10_000, include_ignored=False):
     """Hash source files while excluding local state, environments and generated caches."""
     if (max_bytes is not None and (type(max_bytes) is not int or max_bytes < 0)) or (
         type(max_files) is not int or max_files < 1
@@ -256,7 +256,7 @@ def workspace_snapshot(root, *, max_bytes=None, max_files=10_000):
         current = Path(parent)
         kept = []
         for name in sorted(directories):
-            if (
+            if not include_ignored and (
                 name in _SNAPSHOT_IGNORED_DIRECTORIES
                 or name.startswith(".venv")
                 or name.endswith(".egg-info")
@@ -267,8 +267,9 @@ def workspace_snapshot(root, *, max_bytes=None, max_files=10_000):
             kept.append(name)
         directories[:] = kept
         for name in sorted(filenames):
-            if name.endswith((".pyc", ".pyo")) or (
-                current == root and (current / name) == git_metadata
+            if not include_ignored and (
+                name.endswith((".pyc", ".pyo"))
+                or (current == root and (current / name) == git_metadata)
             ):
                 continue
             path = current / name
@@ -328,7 +329,7 @@ def write_artifact(store, attempt_id, name, data):
     return {"path": relative, "sha256": digest, "size": len(data)}
 
 
-def command_check(store, root, attempt_id, check, cancel):
+def command_check(store, root, attempt_id, check, cancel, *, environment=None):
     """Run the already bound argv directly and retain bounded actual output privately."""
     cwd = safe_workspace_path(root, check.cwd, directory=True)
     started = monotonic()
@@ -340,7 +341,7 @@ def command_check(store, root, attempt_id, check, cancel):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             shell=False,
-            env=os.environ.copy(),
+            env=os.environ.copy() if environment is None else environment,
         )
         process = managed.process
     except OSError as error:

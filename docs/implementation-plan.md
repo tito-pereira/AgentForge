@@ -196,7 +196,15 @@ where required.
 Phase 2 provides human-led Project negotiation and Phase 3 adds planning,
 Adapter Manager, sequential execution and bounded reconciliation. Phase 4
 provides independent audit and formal scoped results. Phase 5 consolidates those
-facts into reports. General product evolution remains a later responsibility.
+facts into reports. Phase 6 adds delivered versions, bounded evolution, sealed
+cumulative candidates, independent playtest admission, sessions, feedback and
+recoverable retention. See [lifecycle](evolution.md), [design](phase-6-design.md)
+and [requirement evidence](phase-6-coverage.md). The owner's [Phase 6.1 delivery
+exception](phase-6-verification.md#phase-61-delivery-decision) waives remaining
+pilot end-to-end and comparable live Claude Code proof as delivery gates, while
+preserving their incomplete/unverified outcomes. Engineering review, exact final
+CI and authorized integration retain separate evidence and authority. The future
+field test is outside this delivery gate; Bench, GUI and SaaS remain out of scope.
 The owner separately authorizes integration and subsequent construction phases.
 
 The delivered Phase 3 task manager provides a separate candidate for independent

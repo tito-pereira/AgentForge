@@ -28,7 +28,7 @@ from .schema import validate_schema
 from .semantics import validate_semantics
 
 _APPLICATION_ID = 0x4E554B59
-_SCHEMA_VERSION = 5
+_SCHEMA_VERSION = 6
 _LOCK_TIMEOUT = 5.0
 _BUSY_CODES = {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
 _ACTIVE_TYPES = frozenset({"PROJECT", "WORKFLOW", "MODULE", "TECHNOLOGY_DECISION", "VALIDATION"})
@@ -381,12 +381,101 @@ _REQUIRED_TABLES_V4 = _REQUIRED_TABLES_V3 | {
     "wf_workspace_leases",
     "wf_execution_events",
 }
-_REQUIRED_TABLES = _REQUIRED_TABLES_V4 | {
+_MIGRATION_V6 = (
+    """CREATE TABLE lc_records (
+        record_id TEXT PRIMARY KEY NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN
+            ('VERSION','EVOLUTION','BUILD','SESSION','FEEDBACK','REVIEW','OPERATION')),
+        project_id TEXT NOT NULL,
+        logical_key TEXT,
+        state TEXT NOT NULL,
+        version INTEGER NOT NULL CHECK (version >= 1),
+        origin TEXT NOT NULL,
+        origin_sha256 TEXT NOT NULL,
+        snapshot TEXT NOT NULL,
+        snapshot_sha256 TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (record_id, project_id),
+        UNIQUE (kind, project_id, logical_key)
+    )""",
+    """CREATE INDEX lc_records_project_kind ON lc_records(project_id, kind)""",
+    """CREATE TRIGGER lc_records_binding BEFORE UPDATE ON lc_records
+       WHEN OLD.record_id IS NOT NEW.record_id OR OLD.kind IS NOT NEW.kind
+         OR OLD.project_id IS NOT NEW.project_id OR OLD.logical_key IS NOT NEW.logical_key
+         OR OLD.origin IS NOT NEW.origin OR OLD.origin_sha256 IS NOT NEW.origin_sha256
+         OR OLD.created_at IS NOT NEW.created_at OR NEW.version != OLD.version + 1
+       BEGIN SELECT RAISE(ABORT, 'Lifecycle origins and identity bindings are immutable'); END""",
+    """CREATE TRIGGER lc_records_no_delete BEFORE DELETE ON lc_records
+       BEGIN SELECT RAISE(ABORT, 'Lifecycle metadata is retained'); END""",
+    """CREATE TRIGGER lc_records_no_replace BEFORE INSERT ON lc_records
+       WHEN EXISTS (SELECT 1 FROM lc_records WHERE record_id = NEW.record_id
+          OR (kind = NEW.kind AND project_id = NEW.project_id
+              AND logical_key = NEW.logical_key))
+       BEGIN SELECT RAISE(ABORT, 'Lifecycle records cannot replace history'); END""",
+    """CREATE TABLE lc_projects (
+        project_id TEXT PRIMARY KEY NOT NULL,
+        enabled INTEGER NOT NULL CHECK (enabled IN (0,1)),
+        tracker_id TEXT NOT NULL UNIQUE,
+        active_build_id TEXT,
+        pending_build_id TEXT,
+        version INTEGER NOT NULL CHECK (version >= 1),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(active_build_id, project_id) REFERENCES lc_records(record_id, project_id),
+        FOREIGN KEY(pending_build_id, project_id) REFERENCES lc_records(record_id, project_id)
+    )""",
+    """CREATE TRIGGER lc_projects_binding BEFORE UPDATE ON lc_projects
+       WHEN OLD.project_id IS NOT NEW.project_id OR OLD.tracker_id IS NOT NEW.tracker_id
+         OR OLD.created_at IS NOT NEW.created_at OR NEW.version != OLD.version + 1
+       BEGIN SELECT RAISE(ABORT, 'Lifecycle tracker identity is stable'); END""",
+    """CREATE TRIGGER lc_projects_insert_builds BEFORE INSERT ON lc_projects
+       WHEN (NEW.active_build_id IS NOT NULL AND NOT EXISTS
+             (SELECT 1 FROM lc_records WHERE record_id=NEW.active_build_id
+                 AND project_id=NEW.project_id AND kind='BUILD'))
+         OR (NEW.pending_build_id IS NOT NULL AND NOT EXISTS
+             (SELECT 1 FROM lc_records WHERE record_id=NEW.pending_build_id
+                 AND project_id=NEW.project_id AND kind='BUILD'))
+       BEGIN SELECT RAISE(ABORT, 'Lifecycle pointers require same-project builds'); END""",
+    """CREATE TRIGGER lc_projects_update_builds BEFORE UPDATE ON lc_projects
+       WHEN (NEW.active_build_id IS NOT NULL AND NOT EXISTS
+             (SELECT 1 FROM lc_records WHERE record_id=NEW.active_build_id
+                 AND project_id=NEW.project_id AND kind='BUILD'))
+         OR (NEW.pending_build_id IS NOT NULL AND NOT EXISTS
+             (SELECT 1 FROM lc_records WHERE record_id=NEW.pending_build_id
+                 AND project_id=NEW.project_id AND kind='BUILD'))
+       BEGIN SELECT RAISE(ABORT, 'Lifecycle pointers require same-project builds'); END""",
+    """CREATE TRIGGER lc_projects_no_delete BEFORE DELETE ON lc_projects
+       BEGIN SELECT RAISE(ABORT, 'Lifecycle tracker history is retained'); END""",
+    """CREATE TRIGGER lc_projects_no_replace BEFORE INSERT ON lc_projects
+       WHEN EXISTS (SELECT 1 FROM lc_projects WHERE project_id=NEW.project_id)
+       BEGIN SELECT RAISE(ABORT, 'Lifecycle tracker cannot be replaced'); END""",
+    """CREATE TABLE lc_events (
+        sequence INTEGER PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        record_id TEXT,
+        kind TEXT NOT NULL,
+        data TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        FOREIGN KEY(record_id, project_id) REFERENCES lc_records(record_id, project_id)
+    )""",
+    """CREATE INDEX lc_events_project ON lc_events(project_id, sequence)""",
+    """CREATE TRIGGER lc_events_no_update BEFORE UPDATE ON lc_events
+       BEGIN SELECT RAISE(ABORT, 'Lifecycle events are append-only'); END""",
+    """CREATE TRIGGER lc_events_no_delete BEFORE DELETE ON lc_events
+       BEGIN SELECT RAISE(ABORT, 'Lifecycle events are append-only'); END""",
+    """CREATE TRIGGER lc_events_no_replace BEFORE INSERT ON lc_events
+       WHEN EXISTS (SELECT 1 FROM lc_events WHERE sequence=NEW.sequence)
+       BEGIN SELECT RAISE(ABORT, 'Lifecycle events are append-only'); END""",
+)
+_REQUIRED_TABLES_V5 = _REQUIRED_TABLES_V4 | {
     "val_drafts",
     "val_plan_bindings",
     "val_runs",
     "val_events",
 }
+_REQUIRED_TABLES = _REQUIRED_TABLES_V5 | {"lc_records", "lc_projects", "lc_events"}
 _REVISIONS = """SELECT revisions.*, contracts.contract_type, contracts.project_id,
                 contracts.active_revision_id
                 FROM revisions JOIN contracts USING (contract_id)"""
@@ -405,7 +494,7 @@ def _markers(connection: sqlite3.Connection) -> tuple[int, int]:
 
 def _verify_database(connection: sqlite3.Connection, version: int) -> None:
     """Check a supported schema without upgrading or rewriting its records."""
-    if version not in (1, 2, 3, 4, _SCHEMA_VERSION) or _markers(connection) != (
+    if version not in (1, 2, 3, 4, 5, _SCHEMA_VERSION) or _markers(connection) != (
         _APPLICATION_ID,
         version,
     ):
@@ -418,7 +507,8 @@ def _verify_database(connection: sqlite3.Connection, version: int) -> None:
         2: _REQUIRED_TABLES_V2,
         3: _REQUIRED_TABLES_V3,
         4: _REQUIRED_TABLES_V4,
-        5: _REQUIRED_TABLES,
+        5: _REQUIRED_TABLES_V5,
+        6: _REQUIRED_TABLES,
     }[version]
     if not required <= tables:
         raise StoreError("The state database schema is incomplete.")
@@ -537,7 +627,7 @@ class ContractStore:
 
     def _migrate(self, connection: sqlite3.Connection) -> None:
         application, version = _markers(connection)
-        if application == _APPLICATION_ID and version in (1, 2, 3, 4, _SCHEMA_VERSION):
+        if application == _APPLICATION_ID and version in (1, 2, 3, 4, 5, _SCHEMA_VERSION):
             _verify_database(connection, version)
             if version == _SCHEMA_VERSION:
                 return
@@ -570,8 +660,12 @@ class ContractStore:
         if version < 4:
             for statement in _MIGRATION_V4:
                 connection.execute(statement)
-        for statement in _MIGRATION_V5:
-            connection.execute(statement)
+        if version < 5:
+            for statement in _MIGRATION_V5:
+                connection.execute(statement)
+        if version < 6:
+            for statement in _MIGRATION_V6:
+                connection.execute(statement)
         connection.execute(f"PRAGMA application_id = {_APPLICATION_ID}")
         connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
         _verify_database(connection, _SCHEMA_VERSION)

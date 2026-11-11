@@ -3,7 +3,7 @@
 Documentation baseline dated November 8, 2026. Product requirements revision v0.2
 targets Core v0.1. Package version `0.1.0` includes the Phase 0 foundation and
 Phase 1 Contract Kernel, Phase 2 Project Manager, Phase 3 Workflow + Adapters and
-Phase 4 Validation and Phase 5 Report.
+Phase 4 Validation, Phase 5 Report and Phase 6 lifecycle integration.
 Phase 0.1 translates public materials into English and prepares public publication.
 Phase 1.1 establishes the Corinthos runtime names and private state path.
 The same requirements revision, product target, package version and Contract
@@ -13,7 +13,7 @@ Kernel architecture apply to Corinthos.
 
 | Engine | Approved responsibility and connections | Implementation status |
 | --- | --- | --- |
-| Standard Engine | Maintains the five universal, versioned, mandatory Engineering Commandments M1–M5 throughout the lifecycle. | YAML policy and minimal structural validation exist. The Engine is planned. |
+| Standard Engine | Maintains the five universal, versioned, mandatory Engineering Commandments M1–M5 throughout the lifecycle. | Versioned policy, mandatory validation, packaged initialization and equivalent managed instructions are implemented. |
 | Adapter Manager | Translates the same Standard for Codex, Claude Code, and future integrations. | Separate Codex/Claude provider boundaries, context preparation, capabilities and advisory assistance are implemented. Live verification is recorded separately. |
 | Project Manager | Negotiates goals and requirements with the user and publishes the approved Project Contract. | Structured service, guided terminal, durable sessions, exact human approval and bounded PRR intake exist. |
 | Workflow Engine | Plans modules, interfaces, technologies, and checkpoints; coordinates execution and change impact analysis. | Exact planning/publication, sequential checkpoint attempts, actual engineering checks, leased recovery and conservative reconciliation are implemented. |
@@ -26,6 +26,17 @@ direct access to the same Project Contract revision. The Standard applies across
 all levels, and interface contracts connect modules horizontally.
 
 The user approves requirements and binding technology or structural decisions.
+
+The [lifecycle layer](evolution.md) reuses these Engine boundaries. Workflow owns
+sealed cumulative candidates, readiness, promotion, sessions and feedback routing;
+Validation independently evaluates complete candidate identities. PM owns optional
+product review and changed requirements; REPORT publishes exact ERCs through the
+Kernel. Shared v6 records/events preserve origins and historical state. Remaining
+pilot end-to-end and comparable live Claude Code proof are waived as delivery
+gates by the owner's [Phase 6.1 decision](phase-6-verification.md#phase-61-delivery-decision).
+Their incomplete/unverified outcomes remain explicit; full Core/PRD completion
+is not claimed.
+
 Project Manager negotiates global intent. Workflow coordinates corrections.
 Validation returns findings to Workflow, and Report references the source records.
 
@@ -66,8 +77,9 @@ See [storage and recovery](storage.md) and the [design record](contract-kernel-d
 The [Project Manager service](project-manager.md) owns product-level negotiation,
 structured suggestions and binding demands, preliminary checks, exact review and
 approved Project publication. A thin terminal adapter collects ordinary-language
-answers and structured choices. An optional assistance callable supplies advisory
-text for future integration. Structural checks expose demonstrable omissions and
+answers and structured choices. Explicit installed `project advise` supplies
+persisted advisory text without editing negotiation or approving decisions.
+Structural checks expose demonstrable omissions and
 inconsistent references while natural-language consistency and technical
 feasibility require explicit human review.
 
@@ -118,7 +130,8 @@ adequacy. The runner observes a verified candidate copy through bound procedures
 retains private evidence and derives an immutable result and scoped technical
 gate. Workflow checks that evidence before affected progression. Changes to
 product decisions and formal human acceptance retain their owner authority.
-General product evolution remains later work.
+The [versioned lifecycle](evolution.md) connects retained delivery, bounded
+evolution and independent playtest admission while preserving these authorities.
 
 ## Report boundary
 

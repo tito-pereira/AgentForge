@@ -193,6 +193,24 @@ class ValidationRunner:
         self.store = store
         self.repository = ValidationRepository(store)
 
+    def _snapshot(self, candidate, build_id=None):
+        snapshot = workspace_snapshot(candidate, include_ignored=build_id is not None)
+        if build_id is not None:
+            from corinthos.lifecycle.builds import BuildService
+
+            builds = BuildService(self.store)
+            identity = builds.identity_for_candidate(candidate, build_id)
+            build = builds.get(build_id)
+            manifest = builds._manifest(build)
+            if snapshot["artifact_identity"].get("snapshot_id") != identity.get("snapshot_id"):
+                raise IntegrityError("The build changed during candidate observation.")
+            snapshot["artifact_identity"] = identity
+            snapshot["build_source"] = {
+                "artifact_identity": manifest["request"]["source_snapshot"]["artifact_identity"],
+                "manifest_sha256": build["origin"]["manifest_sha256"],
+            }
+        return snapshot
+
     def _plan(self, plan_ref):
         plan = self.store.get(plan_ref)
         if plan is None or plan_ref.contract_type != "VALIDATION":
@@ -273,13 +291,13 @@ class ValidationRunner:
 
     def _guard(self, plan, candidate, snapshot, connection, run):
         self.repository.require_current(connection, ContractRef.from_document(plan))
-        if workspace_snapshot(candidate) != snapshot:
+        if self._snapshot(candidate, run["context"].get("build_id")) != snapshot:
             raise IntegrityError(
                 "The exact candidate or an approved source changed during validation."
             )
 
     @staticmethod
-    def _copy(candidate, destination, snapshot):
+    def _copy(candidate, destination, snapshot, *, full_inventory=False):
         if sum(item["size"] for item in snapshot["files"].values()) > _WORKSPACE_LIMIT:
             raise IntegrityError("The candidate exceeds the bounded audit copy size.")
         destination.mkdir(mode=0o700)
@@ -301,7 +319,10 @@ class ValidationRunner:
             output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             with output.open("xb") as stream:
                 stream.write(content)
-        if workspace_snapshot(destination)["files"] != snapshot["files"]:
+        if (
+            workspace_snapshot(destination, include_ignored=full_inventory)["files"]
+            != snapshot["files"]
+        ):
             raise IntegrityError(
                 "The isolated candidate does not match the retained source manifest."
             )
@@ -351,7 +372,12 @@ class ValidationRunner:
                 if missing
                 else _review_observation(reviewer, request)
             )
-        if workspace_snapshot(candidate)["files"] != snapshot["files"]:
+        if (
+            workspace_snapshot(
+                candidate, include_ignored="build_id" in snapshot["artifact_identity"]
+            )["files"]
+            != snapshot["files"]
+        ):
             raise IntegrityError("A procedure changed the isolated candidate during evaluation.")
         states = {item["state"] for item in observation.values()}
         if states == {"NOT_APPLICABLE"}:
@@ -390,11 +416,14 @@ class ValidationRunner:
             "CONFORMANT",
             "NONCONFORMANT",
         }
+        implementation_commit = snapshot["artifact_identity"].get("commit") or snapshot.get(
+            "build_source", {}
+        ).get("artifact_identity", {}).get("commit")
         for kind in row["required_evidence"]:
             if kind == "Independent review record" and not review_observed:
                 continue
             if kind == COMPOUND_EVIDENCE and not (
-                command_observed and review_observed and snapshot["artifact_identity"].get("commit")
+                command_observed and review_observed and implementation_commit
             ):
                 continue
             kinds.append(kind)
@@ -406,6 +435,9 @@ class ValidationRunner:
             ref = {**exact, "evidence_kind": kind, "evidence_id": eid}
             envelope = {
                 **ref,
+                **(
+                    {"build_source": snapshot["build_source"]} if "build_source" in snapshot else {}
+                ),
                 "observed_at": _now(),
                 "binding_sha256": digest(binding),
                 "observations": observation,
@@ -431,6 +463,7 @@ class ValidationRunner:
         *,
         evaluator,
         expected_identity=None,
+        build_id=None,
         reviewer=None,
         previous_run_id=None,
         cancel=None,
@@ -456,7 +489,7 @@ class ValidationRunner:
         candidate = Path(candidate_root).absolute()
         if candidate.resolve(strict=True) != candidate or not candidate.is_dir():
             raise IntegrityError("Use an existing ordinary candidate directory.")
-        snapshot = workspace_snapshot(candidate)
+        snapshot = self._snapshot(candidate, build_id)
         if expected_identity is not None and expected_identity != snapshot["artifact_identity"]:
             raise IntegrityError("The candidate differs from the retained Workflow artifact.")
         cancel = cancel if cancel is not None else threading.Event()
@@ -473,6 +506,7 @@ class ValidationRunner:
                 f"SQLite {sqlite3.sqlite_version}",
             ],
             "scope": plan["payload"]["validation_scope"],
+            **({"build_id": build_id} if build_id is not None else {}),
         }
         run = self.repository.start(
             plan_ref, context, evaluator=evaluator, previous_run_id=previous_run_id, ttl=120
@@ -497,7 +531,7 @@ class ValidationRunner:
             stage.mkdir(mode=0o700)
             copy, scratch = stage / "candidate", stage / "scratch"
             scratch.mkdir(mode=0o700)
-            self._copy(candidate, copy, snapshot)
+            self._copy(candidate, copy, snapshot, full_inventory=build_id is not None)
             self.repository.observe(
                 run_id,
                 owner,
@@ -512,7 +546,7 @@ class ValidationRunner:
                 if cancel.is_set():
                     status = "INTERRUPTED"
                     break
-                if not self._current(plan) or workspace_snapshot(candidate) != snapshot:
+                if not self._current(plan) or self._snapshot(candidate, build_id) != snapshot:
                     raise IntegrityError("An exact source or candidate changed during the audit.")
                 identifier = row["check_id"]
                 binding = validate_binding(bindings[identifier])
@@ -524,7 +558,7 @@ class ValidationRunner:
                 if not observation["cleanup_confirmed"]:
                     requires_inspection = True
                     break
-                if workspace_snapshot(candidate) != snapshot or not self._current(plan):
+                if self._snapshot(candidate, build_id) != snapshot or not self._current(plan):
                     raise IntegrityError("An exact source or candidate changed during the check.")
         except KeyboardInterrupt:
             status = "INTERRUPTED"
@@ -590,7 +624,7 @@ class ValidationRunner:
         if result["payload"]["target_and_execution"]["status"] != "COMPLETED":
             return self.repository.publish(run_id)
         candidate = Path(run["context"]["candidate_root"])
-        snapshot = workspace_snapshot(candidate)
+        snapshot = self._snapshot(candidate, run["context"].get("build_id"))
         if snapshot["artifact_identity"] != run["context"]["artifact_identity"]:
             raise IntegrityError("The frozen result belongs to a different candidate.")
         plan = self._plan(ContractRef.from_json(run["plan_ref"]))

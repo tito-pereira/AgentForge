@@ -24,6 +24,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "corinthos.contracts" = ["schemas/*.json"]
+"corinthos.resources" = ["*.yaml", "*.json"]
 
 [tool.setuptools.dynamic]
 version = {attr = "corinthos.__version__"}

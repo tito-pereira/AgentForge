@@ -6,7 +6,7 @@ private. Keep `.corinthos/`, backups, journals, and the legacy `.nukytera/`
 and `.agentforge/` directories out of Git. The library uses normal OS
 permissions and parameterized SQL.
 
-## SQLite version 5
+## SQLite version 6
 
 | Table | Contents |
 | --- | --- |
@@ -30,16 +30,21 @@ permissions and parameterized SQL.
 | `val_plan_bindings` | Immutable typed procedures and method reviews sealed by an exact published VC. |
 | `val_runs` | Fenced run context, exact candidate identity, earlier-run lineage and frozen result. |
 | `val_events` | Append-only run claims, check observations, inspection and publication events. |
+| `lc_records` | Immutable lifecycle origins, integrity hashes and versioned CAS state for versions, builds, evolution, sessions, feedback, reviews and operations. |
+| `lc_projects` | One stable tracker, explicit IPE enablement and guarded active/pending build pointers per project. |
+| `lc_events` | Append-only lifecycle observations and complete post-state snapshots for historical reconstruction. |
 
 Each connection enables foreign keys. The application marker `0x4E554B59` and
-SQLite `user_version = 5` identify the current database schema. Initialization is an
-atomic version 0-to-5 migration for an empty database. Incompatible, foreign and
+SQLite `user_version = 6` identify the current database schema. Initialization is an
+atomic version 0-to-6 migration for an empty database. Incompatible, foreign and
 corrupt stores fail without being rebuilt. The database schema version is
 independent of the JSON wire version `1.0`.
 Phase 1.1 preserved SQLite version 1 during the naming migration. Phase 2
 introduced v2 PM sessions and receipts. The historical Phase 3 A–D delivery
 introduced v3 planning and publication authority state. The E–F continuation
 added the five v4 execution tables. Phase 4 adds the four v5 Validation tables.
+Phase 6 adds three lifecycle tables with immutable origins, project-level pointer
+guards and post-state events. It preserves the package/wire versions.
 The application ID, wire version `1.0`, published document bytes/hashes, exact
 references and earlier table meanings are preserved.
 
@@ -51,16 +56,16 @@ PM listing continues to see only PM sessions. The
 
 ## Upgrading an existing store
 
-Opening a verified v1 through v4 store takes a bounded immediate write reservation and
+Opening a verified v1 through v5 store takes a bounded immediate write reservation and
 checks SQLite integrity, foreign keys, application marker and schema objects.
 Before changing the schema, a separate read connection makes a consistent
 private original-version backup. Its original markers and integrity are verified
 before it is published at an unused filename. The reservation
 prevents concurrent writers while the backup observes the committed source.
 
-Every missing schema addition and the v5 marker commit in one transaction.
+Every missing schema addition and the v6 marker commit in one transaction.
 A failed upgrade rolls back the schema/version changes and retains any
-completed verified backup. Fresh empty stores initialize directly at v5
+completed verified backup. Fresh empty stores initialize directly at v6
 without a pre-upgrade backup. Read-only, corrupt, foreign, incompatible and
 unsupported future-version stores fail with existing state preserved.
 
@@ -74,11 +79,12 @@ installed-wheel results and their environment.
 
 | Starting state | Original-state backup | Missing schema additions |
 | --- | --- | --- |
-| v1 Contract Kernel | `state.pre-v2-<unique-id>.db` | v2 PM, v3 planning, v4 execution and v5 Validation. |
-| v2 Project Manager | `state.pre-v3-<unique-id>.db` | v3 planning, v4 execution and v5 Validation. |
-| v3 Workflow planning | `state.pre-v4-<unique-id>.db` | v4 execution and v5 Validation. |
-| v4 Workflow execution | `state.pre-v5-<unique-id>.db` | v5 Validation. |
-| v5 current store | Existing state remains current. | No forward migration. |
+| v1 Contract Kernel | `state.pre-v2-<unique-id>.db` | v2 PM, v3 planning, v4 execution, v5 Validation and v6 lifecycle. |
+| v2 Project Manager | `state.pre-v3-<unique-id>.db` | v3 planning, v4 execution, v5 Validation and v6 lifecycle. |
+| v3 Workflow planning | `state.pre-v4-<unique-id>.db` | v4 execution, v5 Validation and v6 lifecycle. |
+| v4 Workflow execution | `state.pre-v5-<unique-id>.db` | v5 Validation and v6 lifecycle. |
+| v5 Validation/Report | `state.pre-v6-<unique-id>.db` | v6 lifecycle tables and guards. |
+| v6 current store | Existing state remains current. | No forward migration. |
 
 The backup filename records the next migration after the original version.
 Directly opening an older store with the current release produces one verified
@@ -233,7 +239,7 @@ Treat a repository folder rename and a private state migration as separate
 operations. Use an authorized project root under your control as the parent of
 both private directories. Close the legacy `.nukytera/` database cleanly and
 stop all users of both directories, including artifact writers. The source
-must be a writable supported SQLite database, version 1, 2, 3, 4 or 5, in
+must be a writable supported SQLite database, version 1, 2, 3, 4, 5 or 6, in
 rollback-journal mode with no WAL, shared-memory or rollback journal sidecars.
 Unsafe filesystem entries,
 incomplete trees and incompatible or corrupt databases block migration.
@@ -278,9 +284,9 @@ Keep it offline while using the verified target. On failure, preserve the
 original and resolve the reported issue before retrying. The library migrates
 only the supplied root. Opening `ContractStore` does not start a migration.
 
-This directory migration accepts verified version 1, 2, 3, 4 and 5 databases and
+This directory migration accepts verified version 1, 2, 3, 4, 5 and 6 databases and
 preserves their original version during the byte comparison. Opening the verified
-target with the current Kernel performs any required independent upgrade to v5.
+target with the current Kernel performs any required independent upgrade to v6.
 Repeating the naming migration before target changes is a no-op. Once the target is
 upgraded or otherwise evolves, its differing bytes are treated as a conflict
 and preserved. Continue using the verified current target.
