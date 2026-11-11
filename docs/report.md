@@ -7,10 +7,11 @@ code. The [design](phase-5-design.md) explains traceability and failure boundari
 
 ## Generate, inspect and publish
 
-Use an installed Python 3.12 environment. `PROJECT_ROOT` is the authorized Core
-project directory containing its private state. `PROJECT_CONTRACT_ID` identifies
-the approved Project Contract. `CANDIDATE_DIR` contains the exact source and
-included package files to inventory. Keep exports outside that directory.
+Use an installed CPython 3.12 environment, the
+[verified baseline](../README.md#prerequisites). `PROJECT_ROOT` is the authorized
+Core project directory containing its private state. `PROJECT_CONTRACT_ID`
+identifies the approved Project Contract. `CANDIDATE_DIR` contains the exact
+source and included package files to inventory. Keep exports outside that directory.
 
 ```text
 corinthos report --root PROJECT_ROOT generate PROJECT_CONTRACT_ID --candidate CANDIDATE_DIR

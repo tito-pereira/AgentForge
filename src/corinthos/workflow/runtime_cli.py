@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from corinthos.adapters import AdapterManager
+from corinthos.bootstrap import show_adapters
 from corinthos.contracts import (
     AuthorityError,
     ContractError,
@@ -150,11 +151,13 @@ def _runner(arguments, store) -> WorkflowRunner:
         )
     if arguments.provider_arg and arguments.provider_executable is None:
         raise IntegrityError("Native-host arguments require an explicit executable.")
-    commands = (
-        None
-        if arguments.provider_executable is None
-        else {arguments.provider: (str(arguments.provider_executable), *arguments.provider_arg)}
-    )
+    commands = {
+        choice["provider"]: (choice["executable"],)
+        for choice in show_adapters(arguments.root)
+        if choice["executable"] is not None
+    }
+    if arguments.provider_executable is not None:
+        commands[arguments.provider] = (str(arguments.provider_executable), *arguments.provider_arg)
     adapters = AdapterManager(
         arguments.policy, arguments.policy_schema, store=store, commands=commands
     )

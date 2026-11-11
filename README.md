@@ -80,8 +80,10 @@ Repository artifacts and public collaboration use English.
 
 ## Prerequisites
 
-Use a normal Python 3.12 installation with pip and venv, plus Git. Run the following
-commands from the root of a fresh checkout. Environment activation is optional
+Package metadata declares Python `>=3.12`; the verified baseline is CPython 3.12
+on Windows and Ubuntu. Python 3.13 and newer have not been verified. Use a normal
+CPython 3.12 installation with pip and venv, plus Git, for the commands below.
+Run them from the root of a fresh checkout. Environment activation is optional
 because each command names its interpreter.
 
 ### Windows PowerShell
@@ -142,11 +144,31 @@ In POSIX `sh`, use `. .venv/bin/activate` instead of `source`. If a distribution
 packages venv or ensurepip separately, install its Python 3.12 venv support before
 creating the environment. Keep installation inside `.venv`.
 
-Local validation results and their environment are recorded in
-[engineering decisions](docs/decisions.md). The workflow targets Python 3.12 on
-Linux and Windows. Clean-venv verification must identify the exact commit and
-environment used. Prior CI results from the runner's global Python do not establish
-the clean-venv result.
+The [current Python baseline](docs/decisions.md#current-python-baseline) records
+the distinction between declared compatibility and verified environments. The
+workflow targets CPython 3.12 on Linux and Windows. Clean-venv verification must
+identify the exact commit and environment used. Prior CI results from the runner's
+global Python do not establish the clean-venv result.
+
+## Discover or configure an agent
+
+Initialize an authorized project directory and inspect its providers:
+
+```text
+corinthos init .
+corinthos adapters show --root .
+corinthos adapters capabilities --root . --provider codex
+```
+
+Initialization also works without an available provider. On Windows, discovery
+can resolve the native executable in the official `@openai/codex` npm layout
+behind a PATH shim, without executing `.cmd`, `.bat` or `.ps1` wrappers. A failed
+lookup does not prove Codex is not installed. Capabilities report the selected
+executable and discovery source; multiple candidates require an explicit choice.
+Use `adapters configure` to save a native path after initialization, or `reset`
+to return to automatic discovery. See the [provider configuration and
+troubleshooting guide](docs/adapters.md#provider-configuration-after-initialization)
+for commands, precedence and verification limits.
 
 ## Create your first project specification
 
