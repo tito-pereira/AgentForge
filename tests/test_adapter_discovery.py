@@ -103,8 +103,9 @@ def test_unresolved_or_untrusted_layout_never_becomes_native_command(tmp_path, b
         elif broken == "wrong-bin":
             value["bin"]["codex"] = "../../outside.js"
         path.write_text(" " * 65_537 if broken == "large" else json.dumps(value))
-    command, source, _, reason = windows_codex_command([str(tmp_path / "npm")], "AMD64")
-    assert command is None and source == "npm-unresolved" and "shim" in reason
+    command, source, version, reason = windows_codex_command([str(tmp_path / "npm")], "AMD64")
+    assert command is None and source == "npm-unresolved" and version is None
+    assert "recognized Codex npm shim" in reason and "could not be resolved safely" in reason
 
 
 def test_ambiguity_requires_explicit_choice_and_does_not_probe(tmp_path):
@@ -116,16 +117,19 @@ def test_ambiguity_requires_explicit_choice_and_does_not_probe(tmp_path):
     assert command is None and source == "ambiguous" and "Multiple" in reason
 
 
-def test_arbitrary_wrappers_or_unrelated_disk_executable_are_not_searched(tmp_path):
+@pytest.mark.parametrize("wrapper", ["codex.cmd", "codex.ps1", "codex"])
+def test_arbitrary_wrappers_or_unrelated_disk_executable_are_not_searched(tmp_path, wrapper):
     prefix = tmp_path / "path"
     prefix.mkdir()
-    (prefix / "codex.cmd").write_text("@echo arbitrary wrapper")
+    (prefix / wrapper).write_text("@echo arbitrary wrapper")
     other = tmp_path / "unrelated/codex.exe"
     other.parent.mkdir()
     other.write_bytes(b"Never inspect this outside PATH/package candidate roots.")
-    assert windows_codex_command([str(prefix)], "AMD64")[0] is None
-    assert windows_codex_command([], "AMD64")[1] == "none"
-    assert "does not prove" in windows_codex_command([], "AMD64")[3]
+    result = windows_codex_command([str(prefix)], "AMD64")
+    assert result == windows_codex_command([], "AMD64")
+    command, source, version, reason = result
+    assert command is None and source == "none" and version is None
+    assert "No native executable" in reason and "shim" not in reason
 
 
 def test_redirected_native_is_not_accepted(tmp_path):

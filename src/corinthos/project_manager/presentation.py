@@ -6,6 +6,11 @@ import unicodedata
 from datetime import UTC, datetime
 
 
+def render_completion(percent: int) -> str:
+    filled = percent // 10
+    return f"Project Completion\n  [{'█' * filled}{'░' * (10 - filled)}] {percent}%"
+
+
 def safe_text(value: object) -> str:
     """Keep text readable while making layout and direction controls visible."""
     text = str(value)

@@ -31,8 +31,8 @@ Earlier names and execution evidence are recorded in [decisions](docs/decisions.
   immutable revisions, and transactional local SQLite storage.
 - Positive and negative tests, Ruff checks, and a GitHub Actions workflow.
 - Agent instructions and self-contained engineering documentation.
-- Guided project negotiation, persistent sessions, classified suggestions and
-  requirements, complete reviews, and explicit local terminal approval.
+- Guided, AI-assisted and advanced project authoring over a persistent draft,
+  with structural readiness checks, complete reviews and local terminal approval.
 - Bounded intake of published Project Revision Requests and immutable approved
   Project revisions through the existing Kernel.
 - Guided technology and module planning, exact provider/consumer interfaces,
@@ -183,25 +183,33 @@ existing project directory with `--root`. Corinthos saves accepted answers
 privately beneath that directory.
 
 Describe your idea in your own words, for example, "Build a local greeting for
-a supplied name." In the numbered menu, add included scope, a requirement and
-its observable acceptance criterion, then a project success criterion. For
-example, the requirement can be "Print a greeting for the supplied name" and its
-criterion "Input Ada produces Hello, Ada."
+a supplied name." Choose how to continue editing the same saved draft.
 
-Use the menu to record constraints, exclusions, assumptions and risks. Classify
-each proposal as a negotiable **SUGGESTION** or binding **REQUIREMENT**, choose its
-related numbered obligations, and record your decision and reason. **Show
-complete draft** displays missing information and all saved choices. **Review
-complete contract** shows every contract field, stable ID, review digest and
-any previous revision differences. **Save for later and leave** preserves the
-session. Resume it through the same venv executable.
+- **Help me develop the idea** requests optional advice from a provider you
+  select. You decide which suggestions to accept, edit or reject.
+- **Guide me through the specification** walks you through included scope, each
+  requirement and its observable acceptance criteria, optional constraints and
+  project success criteria. It works without a provider.
+- **Configure it manually** opens the full editor, including exclusions,
+  assumptions, risks, proposals, questions and feasibility records.
+
+**Project Completion** shows structural progress. At 100% the draft meets the
+structural prerequisites for complete review. Feasibility, product quality and
+independent Validation are assessed separately. Use **Review current draft** to
+inspect the specification and any outstanding issues.
+
+Use **Back** (`0` in menus) to leave the current step, or **Save and exit** (`S`
+in menus) to leave the session. At text prompts use `/back` or `/save`. Accepted
+changes persist even when the draft is incomplete. Resume it through the same
+venv executable.
 
 ```powershell
 .\.venv\Scripts\corinthos.exe project --root . resume
 ```
 
-When ready, choose **Approve at the local terminal**. Read the complete fresh
-review and type its exact random `APPROVE` challenge to publish that specification.
+When ready, choose **Approve at the local terminal** in the advanced editor or
+run `corinthos project --root . approve`. Read the complete fresh review and type
+its exact random `APPROVE` challenge to publish that specification.
 Other answers defer publication. Approval requires a foreground local terminal.
 Piped scripts can prepare drafts but cannot provide production approval. The
 published Project Contract describes what should be built. Workflow coordinates

@@ -81,7 +81,7 @@ def windows_codex_command(path_entries, machine):
     """Return one native command, source, npm version and diagnostic from PATH roots."""
     if len(path_entries) > 256:
         return None, "none", None, "PATH has too many entries; configure an explicit executable."
-    candidates, saw_shim = {}, False
+    candidates, saw_npm_shim = {}, False
     for entry in path_entries:
         directory = Path(entry.strip('"'))
         if not directory.is_absolute():
@@ -97,12 +97,12 @@ def windows_codex_command(path_entries, machine):
             shim = directory / name
             try:
                 content = _read(shim).decode("utf-8-sig").replace("\\", "/")
-                saw_shim = True
                 recognized |= "node_modules/@openai/codex/bin/codex.js" in content and any(
                     marker in content for marker in ("%dp0%", "$basedir", "basedir=")
                 )
             except (OSError, ValueError, UnicodeError):
                 continue
+        saw_npm_shim |= recognized
         if not recognized or machine.lower() not in _TARGETS:
             continue
         try:
@@ -128,12 +128,12 @@ def windows_codex_command(path_entries, machine):
     if candidates:
         binary, (source, version) = next(iter(candidates.items()))
         return (str(binary),), source, version, None
-    if saw_shim:
+    if saw_npm_shim:
         return (
             None,
             "npm-unresolved",
             None,
-            "A Codex command shim was found, but its npm native binary could not be resolved safely. Configure an explicit native executable.",
+            "A recognized Codex npm shim was found, but its native binary could not be resolved safely. Configure an explicit native executable.",
         )
     return (
         None,
