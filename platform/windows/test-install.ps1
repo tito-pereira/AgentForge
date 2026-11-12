@@ -91,8 +91,8 @@ try {
     Assert-Smoke ((Get-Command corinthos).Source -eq (Join-Path $paths.Bin 'corinthos.exe')) 'Command did not resolve through the persisted user PATH.'
     $version = & corinthos --version
     Assert-Smoke ($LASTEXITCODE -eq 0 -and $version -like 'corinthos *') 'Installed command failed after the checkout moved.'
-    $home = '0' | & corinthos
-    Assert-Smoke ($LASTEXITCODE -eq 0 -and 'CORINTHOS' -in $home) 'The command did not forward stdin and stdout to Home.'
+    $homeOutput = '0' | & corinthos
+    Assert-Smoke ($LASTEXITCODE -eq 0 -and 'CORINTHOS' -in $homeOutput) 'The command did not forward stdin and stdout to Home.'
     $errorOutput = & {
         $ErrorActionPreference = 'Continue'
         & corinthos --installer-smoke-invalid-option 2>&1
