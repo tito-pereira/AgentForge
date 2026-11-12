@@ -15,6 +15,11 @@ from corinthos.contracts import ConflictError, ContractError, ContractStore, Int
 from corinthos.contracts.model import canonical_json
 
 
+@pytest.fixture(autouse=True)
+def isolated_provider_registry(tmp_path, monkeypatch):
+    monkeypatch.setattr("corinthos.user_state.state_root", lambda: tmp_path / "user-state")
+
+
 @pytest.fixture
 def native(tmp_path):
     path = tmp_path / "synthetic-native.exe"

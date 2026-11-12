@@ -21,9 +21,10 @@ from corinthos.contracts import ConflictError, ContractError, IntegrityError
 from corinthos.contracts.artifacts import is_link, private_directory
 from corinthos.contracts.model import canonical_json
 from corinthos.project_manager.presentation import render_fields, safe_text
+from corinthos.providers import SUPPORTED_PROVIDERS, configured_executables, refresh_providers
 from corinthos.standard import load_standard
 
-_PROVIDERS = ("codex", "claude")
+_PROVIDERS = SUPPORTED_PROVIDERS
 _MAX_PROFILE = 128 * 1024
 
 
@@ -259,13 +260,52 @@ def _configured(policy_path=None, schema_path=None, commands=None):
     return _profile(value)
 
 
-def adapter_manager(root, *, policy_path=None, schema_path=None, commands=None, store=None):
+def _choices(private, saved, providers):
+    choices = []
+    global_choices = None
+    for name in providers:
+        command = saved["commands"].get(name) if saved is not None else None
+        operational = _read_adapter(private / f"adapter-{name}.json", name) if private else None
+        if operational is not None:
+            executable, configuration = operational["executable"], "operational"
+        elif command:
+            executable, configuration = command[0], "initial"
+        else:
+            if global_choices is None:
+                global_choices = configured_executables()
+            executable = global_choices.get(name)
+            configuration = "global" if executable else "default"
+        choices.append(
+            {
+                "provider": name,
+                "executable": executable,
+                "configuration": configuration,
+                "selection": "explicit" if executable else "autodiscovery",
+            }
+        )
+    return choices
+
+
+def _manager(profile, commands, store=None):
+    with tempfile.TemporaryDirectory(prefix="corinthos-standard-") as directory:
+        policy = Path(directory) / "standard.json"
+        policy.write_text(canonical_json(profile["standard"]), encoding="utf-8")
+        with as_file(files("corinthos.resources").joinpath("standard.schema.json")) as schema:
+            return AdapterManager(policy, schema, store=store, commands=commands)
+
+
+def adapter_manager(
+    root, *, policy_path=None, schema_path=None, commands=None, store=None, operation_commands=None
+):
     """Reconstruct validated installed configuration without native work or writes."""
     root = _root(root)
     private = root / ".corinthos"
     saved = None
     if private.exists() or private.is_symlink():
-        saved = _read_profile(private_directory(root) / "bootstrap.json")
+        private = private_directory(root)
+        saved = _read_profile(private / "bootstrap.json")
+    else:
+        private = None
     profile = saved if saved is not None else _configured(policy_path, schema_path)
     if saved is not None and (policy_path is not None or schema_path is not None):
         supplied = _configured(policy_path, schema_path)
@@ -273,24 +313,16 @@ def adapter_manager(root, *, policy_path=None, schema_path=None, commands=None, 
             raise ConflictError(
                 "Explicit Standard settings conflict with the saved bootstrap profile."
             )
-    selected = dict(profile["commands"])
-    if private.exists():
-        for provider in _PROVIDERS:
-            operational = _read_adapter(
-                private_directory(root) / f"adapter-{provider}.json", provider
-            )
-            if operational is not None:
-                selected.pop(provider, None)
-                if operational["executable"] is not None:
-                    selected[provider] = [operational["executable"]]
+    selected = {
+        choice["provider"]: [choice["executable"]]
+        for choice in _choices(private, saved, _PROVIDERS)
+        if choice["executable"] is not None
+    }
     if commands is not None:
         selected.update(_commands(commands, require_present=True))
-    with tempfile.TemporaryDirectory(prefix="corinthos-standard-") as directory:
-        policy = Path(directory) / "standard.json"
-        policy.write_text(canonical_json(profile["standard"]), encoding="utf-8")
-        with as_file(files("corinthos.resources").joinpath("standard.schema.json")) as schema:
-            manager = AdapterManager(policy, schema, store=store, commands=selected)
-    return manager
+    if operation_commands is not None:
+        selected.update(operation_commands)
+    return _manager(profile, selected, store)
 
 
 def show_adapters(root, *, provider=None):
@@ -303,24 +335,9 @@ def show_adapters(root, *, provider=None):
     if private.exists() or private.is_symlink():
         private = private_directory(root)
         saved = _read_profile(private / "bootstrap.json")
-    result = []
-    for name in (provider,) if provider else _PROVIDERS:
-        command = saved["commands"].get(name) if saved is not None else None
-        operational = _read_adapter(private / f"adapter-{name}.json", name) if saved else None
-        executable = command[0] if command else None
-        configuration = "initial" if command else "default"
-        if operational is not None:
-            executable = operational["executable"]
-            configuration = "operational"
-        result.append(
-            {
-                "provider": name,
-                "executable": executable,
-                "configuration": configuration,
-                "selection": "explicit" if executable else "autodiscovery",
-            }
-        )
-    return result
+    else:
+        private = None
+    return _choices(private, saved, (provider,) if provider else _PROVIDERS)
 
 
 def configure_adapter(root, provider, executable=None):
@@ -356,7 +373,7 @@ def initialize(root, *, policy_path=None, schema_path=None, commands=None):
     if saved is not None and saved != profile:
         raise ConflictError("Initialization conflicts with the saved bootstrap profile.")
     _save_profile(root, profile)
-    manager = adapter_manager(root)
+    manager = _manager(profile, profile["commands"])
     prepared = [manager.prepare(provider, root) for provider in _PROVIDERS]
     return {
         "root": str(root),
@@ -396,6 +413,9 @@ def add_cli(subparsers):
     show.add_argument("--root", type=Path, default=Path.cwd())
     show.add_argument("--provider", choices=_PROVIDERS)
     show.set_defaults(handler=run)
+    actions.add_parser(
+        "refresh", help="Refresh bounded per-user provider observations without opening a project."
+    ).set_defaults(handler=run)
     for action in ("configure", "reset"):
         configure = actions.add_parser(
             action, help=f"{action.capitalize()} one saved adapter choice."
@@ -409,6 +429,9 @@ def add_cli(subparsers):
 
 def run(arguments):
     try:
+        if arguments.bootstrap_action == "refresh":
+            print(render_fields(refresh_providers()))
+            return 0
         if arguments.bootstrap_action == "show":
             print(render_fields(show_adapters(arguments.root, provider=arguments.provider)))
             return 0

@@ -15,16 +15,18 @@ and displays actual assumptions, risks and supplied evidence. The
 
 ## A first project
 
-Install the package using the [README](../README.md). Open a terminal in the
-checkout and run the venv's `corinthos` command. This example uses PowerShell.
+Follow the [installation guide](../README.md#install-on-windows). Open a
+terminal in the directory you want to use for the project, run `corinthos`
+and choose **Create new project**, or use the scriptable commands.
 
 ```powershell
-.\.venv\Scripts\corinthos.exe project --root . start
+corinthos init .
+corinthos project --root . start
 ```
 
-For POSIX, use `.venv/bin/corinthos project --root . start`. The root must be an
-existing directory you control. Accepted answers are stored privately beneath
-that root. Use `--root` consistently when returning to a project.
+The root must be an existing directory you control. Accepted answers are
+stored privately beneath that root. Return from **Recent projects**, or use
+`corinthos .` from the project directory.
 
 1. Describe your idea, for example, "Build a local greeting for a supplied name."
 2. Choose **Guide me through the specification**. Keep or refine the idea, then

@@ -24,6 +24,28 @@ def _ordinary(path):
     return info
 
 
+def ordinary_windows_executable(path):
+    """Require a native executable without file or directory redirection."""
+    if not path.is_absolute() or path.suffix.lower() != ".exe":
+        return False
+    try:
+        _ordinary(path)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def windows_path_executable(path_entries, provider):
+    """Search only explicitly listed absolute Windows PATH directories."""
+    if len(path_entries) > 256:
+        return None
+    for entry in path_entries:
+        candidate = Path(entry.strip('"')) / f"{provider}.exe"
+        if ordinary_windows_executable(candidate):
+            return str(candidate)
+    return None
+
+
 def _read(path):
     info = _ordinary(path)
     if info.st_size > _LIMIT:

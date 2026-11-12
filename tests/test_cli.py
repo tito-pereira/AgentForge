@@ -12,7 +12,7 @@ from corinthos import __version__
 from corinthos.contracts import ContractType
 
 
-@pytest.mark.parametrize("command", [[], ["--help"], ["--version"]])
+@pytest.mark.parametrize("command", [["--help"], ["--version"]])
 def test_module_cli_from_another_directory(command, tmp_path):
     result = subprocess.run(
         [sys.executable, "-m", "corinthos", *command],
@@ -24,6 +24,29 @@ def test_module_cli_from_another_directory(command, tmp_path):
     assert result.returncode == 0, result.stderr
     assert "corinthos" in result.stdout
     assert (__version__ if command == ["--version"] else "--help") in result.stdout
+
+
+def test_module_without_arguments_opens_home(tmp_path):
+    result = subprocess.run(
+        [sys.executable, "-m", "corinthos"],
+        cwd=tmp_path,
+        input="0\n",
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    for label in (
+        "CORINTHOS",
+        "Create new project",
+        "Open existing project",
+        "Recent projects",
+        "Providers",
+        "Settings",
+        "Help",
+        "0. Exit",
+    ):
+        assert label in result.stdout
 
 
 def test_unknown_command_is_rejected(tmp_path):

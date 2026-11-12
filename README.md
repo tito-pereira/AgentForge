@@ -5,6 +5,67 @@ instructions, explicit human decisions, versioned contracts, and independent
 verification. It aims to preserve engineering standards when working with
 different agents, initially Codex and Claude Code.
 
+## Install on Windows
+
+In PowerShell on Windows x64, clone the repository and run the installer.
+
+```powershell
+git clone https://github.com/tito-pereira/Corinthos.git
+cd Corinthos
+.\install.ps1
+```
+
+After the installer reports 100%, open a new terminal in any directory.
+
+```powershell
+corinthos
+```
+
+Home lets you create or open a project, resume a recent project, and inspect
+providers and settings. Use `corinthos .` to open the project in the current
+directory. Scriptable commands such as `corinthos init .` and `corinthos project
+--root . start` also work. Providers are optional. Installation and reinstall
+leave provider settings and observations untouched and run no provider CLIs.
+Choose **Providers → Refresh** in Home or run `corinthos adapters refresh` to
+request capability checks explicitly.
+
+Installation uses the current account and owns its private CPython 3.14.10
+embeddable runtime, packaged application resources and pinned dependencies.
+It verifies the runtime and dependency downloads against the
+[artifact manifest](platform/windows/artifacts.json). The Windows .NET Framework
+compiler builds the small console launcher locally. The installer checks the
+private runtime and installed command before reporting success. Uncached
+artifacts require network access. The installed command runs independently of
+any system Python or checkout location.
+
+| Location | Contents |
+| --- | --- |
+| `%LOCALAPPDATA%\Programs\Corinthos` | Launcher in `bin`, private runtime, application and immutable resources. |
+| `%LOCALAPPDATA%\Corinthos` | Versioned settings, provider registry and up to 20 recent project references, plus logs and cached downloads. |
+| `<project>\.corinthos` | Authoritative state for that project. |
+
+**Reinstall or upgrade locally.** Run `.\install.ps1` from the desired source
+checkout. It stages and verifies a replacement while preserving compatible
+user configuration, recent projects and project data. If setup finds files
+outside its installation inventory, move them to a separate location before
+retrying. If a cached download fails verification, remove the named cached file
+and rerun the installer.
+
+**Uninstall.** Run the installed uninstaller in PowerShell.
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\Corinthos\uninstall.ps1"
+```
+
+Uninstall removes the installed application and its user PATH entry. User
+configuration, cached downloads and project state are kept. Open a new terminal
+after uninstall to pick up the PATH change.
+
+Windows is the supported platform for this source installer. The contributor
+workflow below remains available on Windows and Ubuntu.
+
+## About Corinthos
+
 The implementation includes the **Phase 0 foundation**, **Phase 1 Contract
 Kernel**, **Phase 2 Project Manager**, **Phase 3 Workflow + Adapters**,
 **Phase 4 Validation Engine**, **Phase 5 Report Engine** and the **Phase 6 lifecycle
@@ -17,7 +78,7 @@ The product target remains Core v0.1, based on product specification revision v0
 The brand is **Corinthos**, the Python distribution is `corinthos-core`, and
 the sole supported import prefix and CLI command are `corinthos`. Phase 1.1
 changes these identifiers at version `0.1.0`. Update imports and command
-invocations in existing integrations and install into a fresh venv. The
+invocations in integrations that use the earlier names. The
 Contract Kernel keeps its behavior and durable wire identities.
 Earlier names and execution evidence are recorded in [decisions](docs/decisions.md).
 
@@ -78,11 +139,11 @@ Natural-language consistency and technical feasibility require human review.
 All five are mandatory. The initial policy rejects their removal or deactivation.
 Repository artifacts and public collaboration use English.
 
-## Prerequisites
+## Contributor setup
 
-Package metadata declares Python `>=3.12`; the verified baseline is CPython 3.12
-on Windows and Ubuntu. Python 3.13 and newer have not been verified. Use a normal
-CPython 3.12 installation with pip and venv, plus Git, for the commands below.
+Package metadata declares Python `>=3.12`. CI tests CPython 3.12 and 3.14.10
+on Windows and Ubuntu. These commands use a contributor-managed CPython 3.12
+installation with pip and venv, plus Git.
 Run them from the root of a fresh checkout. Environment activation is optional
 because each command names its interpreter.
 
@@ -146,7 +207,7 @@ creating the environment. Keep installation inside `.venv`.
 
 The [current Python baseline](docs/decisions.md#current-python-baseline) records
 the distinction between declared compatibility and verified environments. The
-workflow targets CPython 3.12 on Linux and Windows. Clean-venv verification must
+workflow targets CPython 3.12 and 3.14.10 on Linux and Windows. Clean-venv verification must
 identify the exact commit and environment used. Prior CI results from the runner's
 global Python do not establish the clean-venv result.
 
@@ -172,15 +233,16 @@ for commands, precedence and verification limits.
 
 ## Create your first project specification
 
-After installation, run this from the checkout in PowerShell.
+In the directory you want to use for the project, choose **Create new project**
+from Home or run the scriptable commands.
 
 ```powershell
-.\.venv\Scripts\corinthos.exe project --root . start
+corinthos init .
+corinthos project --root . start
 ```
 
-For POSIX, run `.venv/bin/corinthos project --root . start`. You can select another
-existing project directory with `--root`. Corinthos saves accepted answers
-privately beneath that directory.
+You can select another existing project directory with `--root`. Corinthos
+saves accepted answers privately beneath that directory.
 
 Describe your idea in your own words, for example, "Build a local greeting for
 a supplied name." Choose how to continue editing the same saved draft.
@@ -200,11 +262,11 @@ inspect the specification and any outstanding issues.
 
 Use **Back** (`0` in menus) to leave the current step, or **Save and exit** (`S`
 in menus) to leave the session. At text prompts use `/back` or `/save`. Accepted
-changes persist even when the draft is incomplete. Resume it through the same
-venv executable.
+changes persist even when the draft is incomplete. Resume it from Home or run
+the following command from the project directory.
 
 ```powershell
-.\.venv\Scripts\corinthos.exe project --root . resume
+corinthos project --root . resume
 ```
 
 When ready, choose **Approve at the local terminal** in the advanced editor or
@@ -226,10 +288,9 @@ After publishing the Project specification, copy its logical contract ID from
 the published reference and substitute it below.
 
 ```powershell
-.\.venv\Scripts\corinthos.exe workflow --root . plan YOUR_PROJECT_CONTRACT_ID
+corinthos workflow --root . plan YOUR_PROJECT_CONTRACT_ID
 ```
 
-For POSIX, use `.venv/bin/corinthos workflow --root . plan YOUR_PROJECT_CONTRACT_ID`.
 Choose the exact approved revision. The numbered editor collects module
 responsibilities, assigned requirements/constraints, evaluated technology options,
 exact interfaces, verification requirements, checkpoints and optional milestones.

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from corinthos.adapters import AdapterManager
-from corinthos.bootstrap import show_adapters
+from corinthos.bootstrap import adapter_manager, show_adapters
 from corinthos.contracts import (
     AuthorityError,
     ContractError,
@@ -33,6 +33,9 @@ from .verification import (
     _managed_plan,
     workspace_snapshot,
 )
+
+_CHECKOUT_POLICY = Path("policies/standard.yaml")
+_CHECKOUT_SCHEMA = Path("schemas/standard.schema.json")
 
 
 def configure_parser(actions) -> None:
@@ -75,13 +78,11 @@ def configure_parser(actions) -> None:
             parser.add_argument(
                 "--policy",
                 type=Path,
-                default=Path("policies/standard.yaml"),
-                help="Existing Standard policy path.",
+                help="Existing Standard policy path. Defaults to the checkout or installed Standard.",
             )
             parser.add_argument(
                 "--policy-schema",
                 type=Path,
-                default=Path("schemas/standard.schema.json"),
                 help="Existing Standard schema path.",
             )
             parser.add_argument("--provider", choices=("codex", "claude"), default="codex")
@@ -145,22 +146,30 @@ def _technical_review(request: dict) -> TechnicalReview:
 
 
 def _runner(arguments, store) -> WorkflowRunner:
-    if not arguments.policy.is_file() or not arguments.policy_schema.is_file():
+    if arguments.provider_arg and arguments.provider_executable is None:
+        raise IntegrityError("Native-host arguments require an explicit executable.")
+    overrides = {}
+    if arguments.provider_executable is not None:
+        overrides[arguments.provider] = (
+            str(arguments.provider_executable),
+            *arguments.provider_arg,
+        )
+    policy = arguments.policy or _CHECKOUT_POLICY
+    schema = arguments.policy_schema or _CHECKOUT_SCHEMA
+    if policy.is_file() and schema.is_file():
+        commands = {
+            choice["provider"]: (choice["executable"],)
+            for choice in show_adapters(arguments.root)
+            if choice["executable"] is not None
+        }
+        commands.update(overrides)
+        adapters = AdapterManager(policy, schema, store=store, commands=commands)
+    elif arguments.policy is None and arguments.policy_schema is None:
+        adapters = adapter_manager(arguments.root, store=store, operation_commands=overrides)
+    else:
         raise IntegrityError(
             "Select existing Standard policy and schema paths for this installation."
         )
-    if arguments.provider_arg and arguments.provider_executable is None:
-        raise IntegrityError("Native-host arguments require an explicit executable.")
-    commands = {
-        choice["provider"]: (choice["executable"],)
-        for choice in show_adapters(arguments.root)
-        if choice["executable"] is not None
-    }
-    if arguments.provider_executable is not None:
-        commands[arguments.provider] = (str(arguments.provider_executable), *arguments.provider_arg)
-    adapters = AdapterManager(
-        arguments.policy, arguments.policy_schema, store=store, commands=commands
-    )
     return WorkflowRunner(arguments.root, adapters, reviewer=_technical_review)
 
 

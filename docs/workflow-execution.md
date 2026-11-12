@@ -19,7 +19,7 @@ Use an installed or activated `corinthos` executable. Substitute the actual
 approved Workflow contract ID and an existing project root.
 
 ```text
-corinthos workflow --root PROJECT_ROOT configure WORKFLOW_CONTRACT_ID --policy STANDARD_YAML --policy-schema STANDARD_SCHEMA
+corinthos workflow --root PROJECT_ROOT configure WORKFLOW_CONTRACT_ID
 ```
 
 Choose the exact published Workflow revision. For each approved checkpoint, the
@@ -58,9 +58,10 @@ bindings to the approved wording. They grant no additional product scope.
 
 Accepted configuration registers an execution ID without invoking an agent.
 Identical registration is idempotent. A conflicting configuration needs explicit
-reconciliation. The same project root and Standard paths must be used on return.
-The policy files belong to the Corinthos checkout and must be supplied explicitly
-when using the installed wheel from another working directory.
+reconciliation. The same project root and Standard must be used on return.
+Without policy flags outside a source checkout, the runtime uses the project's
+saved Standard or the bundled default. Contributor checkouts continue to use
+their existing default policy and schema files.
 
 ## Commands and native provider setup
 

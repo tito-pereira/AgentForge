@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   verify:
+    name: Verify (${{ matrix.os }}, CPython ${{ matrix.version }})
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -17,11 +18,25 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            version: '3.12'
             shell: bash
             base: python3.12
             python: ./.venv/bin/python
             cli: ./.venv/bin/corinthos
           - os: windows-latest
+            version: '3.12'
+            shell: pwsh
+            base: python
+            python: ./.venv/Scripts/python.exe
+            cli: ./.venv/Scripts/corinthos.exe
+          - os: ubuntu-latest
+            version: '3.14.10'
+            shell: bash
+            base: python3.14
+            python: ./.venv/bin/python
+            cli: ./.venv/bin/corinthos
+          - os: windows-latest
+            version: '3.14.10'
             shell: pwsh
             base: python
             python: ./.venv/Scripts/python.exe
@@ -34,19 +49,23 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.version }}
       - name: Record tested commit
         run: git rev-parse HEAD
       - name: Create clean virtual environment
         run: ${{ matrix.base }} -m venv .venv
       - name: Verify virtual environment and Python version
+        env:
+          CORINTHOS_CI_PYTHON: ${{ matrix.version }}
         run: |
           ${{ matrix.python }} -c "
+          import os
           import platform
           import sys
           from pathlib import Path
           expected = Path.cwd() / '.venv'
-          assert sys.version_info[:2] == (3, 12)
+          version = tuple(map(int, os.environ['CORINTHOS_CI_PYTHON'].split('.')))
+          assert sys.version_info[:len(version)] == version
           assert sys.prefix != sys.base_prefix
           assert Path(sys.prefix).resolve() == expected.resolve()
           assert Path(sys.executable).absolute().is_relative_to(expected.absolute())
@@ -139,3 +158,18 @@ jobs:
           python -c "import sys; from pathlib import Path; assert sys.prefix != sys.base_prefix; assert Path(sys.prefix).resolve() == (Path.cwd() / '.venv').resolve(); print(sys.executable)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           deactivate
+  source-install:
+    name: Verify Windows source installation (CPython 3.14.10 embeddable)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record tested commit
+        shell: pwsh
+        run: git rev-parse HEAD
+      - name: Install, exercise, reinstall and uninstall in a disposable user scope
+        shell: powershell
+        run: .\platform\windows\test-install.ps1

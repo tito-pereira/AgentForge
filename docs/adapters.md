@@ -94,10 +94,24 @@ sandbox and cannot contain effects deliberately routed through external services
 or an independently running broker. Authentication, native hooks and configured
 services remain the caller's responsibility.
 
-### Provider configuration after initialization
+### Per-user and project provider configuration
+
+Use **Providers** on the Corinthos Home screen to inspect observed native
+capabilities or change a per-user executable choice. Installation and reinstall
+leave the registry untouched and succeed without providers. A fresh install
+leaves capabilities unobserved. Choose **Refresh** in Home or run
+`corinthos adapters refresh` from any directory to request bounded native
+version/help checks.
+
+The versioned `providers.json` in Corinthos user state stores a map by provider
+identifier. Each entry can hold an explicit native executable and the last
+observed version, interface flags and discovery diagnostic. Observations are for
+inspection. Runtime discovery rechecks the actual executable and never promotes
+an observed path to a configured choice. Unrecognized provider entries are
+preserved, and execution requires a supported native adapter.
 
 `corinthos init` does not require an installed or discoverable provider. Later,
-inspect saved choices without running a provider, or explicitly probe capabilities:
+inspect saved choices, explicitly probe capabilities, or set a project override:
 
 ```text
 corinthos adapters show --root PROJECT --provider codex
@@ -117,15 +131,18 @@ Choices are local operational files `.corinthos/adapter-codex.json` and
 `.corinthos/adapter-claude.json`, not product contracts. Each update replaces only
 one provider's bounded private JSON file atomically. It does not rebuild
 `bootstrap.json`, rewrite instructions or open/replace `state.db`. Precedence is
-an explicit one-off CLI executable, then the saved operational choice, then an
-initial bootstrap executable, then automatic discovery. Reset saves an explicit
-null choice so even an old bootstrap executable is cleared from effective
-selection; it does not remove unrelated provider settings. Existing projects
-without these sidecars retain their initial configuration.
+an explicit one-off CLI executable, then the project's saved operational choice
+or initial bootstrap executable, then the per-user choice, then automatic
+discovery. Project reset saves an explicit null choice that forces discovery in
+that project, even if an initial or per-user executable exists. Per-user reset
+clears the user-level choice and its last observation.
 
 Saved choices are consumed by installed capability checks, PM advice and the
 Workflow execution CLI. Workflow's explicit executable/argument-prefix options
-still override the saved choice for that operation.
+override the saved choice for that operation. Without explicit Standard paths,
+Workflow uses checkout policy/schema files when both exist in the working
+directory. From an installed app outside a checkout it uses the saved project
+Standard or the bundled default for a project without a bootstrap profile.
 
 ### Windows npm discovery
 

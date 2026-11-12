@@ -573,6 +573,32 @@ class ContractStore:
         """Return the private database location."""
         return self._database_path
 
+    @staticmethod
+    def verify_existing(project_root: Path) -> bool:
+        """Inspect a saved database without creating or migrating project state."""
+        database = private_directory(project_root) / "state.db"
+        try:
+            _check_database_files(database)
+            if not database.exists():
+                return False
+            with closing(
+                sqlite3.connect(
+                    f"{database.as_uri()}?mode=ro",
+                    uri=True,
+                    timeout=_LOCK_TIMEOUT,
+                    autocommit=True,
+                )
+            ) as connection:
+                connection.execute("PRAGMA trusted_schema = OFF")
+                connection.execute("PRAGMA foreign_keys = ON")
+                connection.execute("BEGIN")
+                _, version = _markers(connection)
+                _verify_database(connection, version)
+                connection.execute("COMMIT")
+            return True
+        except (OSError, sqlite3.Error):
+            raise StoreError("Cannot read the existing project database.") from None
+
     @contextmanager
     def _connection(self, *, create: bool = False) -> Iterator[sqlite3.Connection]:
         try:

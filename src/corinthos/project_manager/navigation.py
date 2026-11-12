@@ -14,15 +14,18 @@ class SaveAndExit(Exception):
     """Leave the authoring session with accepted edits saved."""
 
 
-def answer(prompt: str, *, default: str | None = None, optional: bool = False) -> str:
+def answer(
+    prompt: str, *, default: str | None = None, optional: bool = False, save: bool = True
+) -> str:
     suffix = "" if default is None else f" [{safe_text(default)}]"
+    controls = "/back to go back" + (", /save to save and exit" if save else "")
     while True:
-        text = input(prompt + suffix + "\n/back to go back, /save to save and exit\n> ").strip()
+        text = input(prompt + suffix + "\n" + controls + "\n> ").strip()
         if text.lower() == "/back":
             raise Back
-        if text.lower() == "/save":
+        if save and text.lower() == "/save":
             raise SaveAndExit
-        if text.lower() in {"//back", "//save"}:
+        if text.lower() == "//back" or (save and text.lower() == "//save"):
             return text[1:]
         if not text and default is not None:
             return default
@@ -31,11 +34,13 @@ def answer(prompt: str, *, default: str | None = None, optional: bool = False) -
         elif text or optional:
             return text
         else:
-            print("Enter an answer, /back or /save.")
+            print("Enter an answer, /back or /save." if save else "Enter an answer or /back.")
 
 
-def choose[T](choices: dict[str, T], prompt: str = "Choose a number", *, save=True) -> T | None:
-    print("0. Back")
+def choose[T](
+    choices: dict[str, T], prompt: str = "Choose a number", *, save=True, zero_label="Back"
+) -> T | None:
+    print("0. " + zero_label)
     if save:
         print("S. Save and exit")
     while True:
