@@ -54,9 +54,9 @@ try {
         $movedCandidate = $true
         $installedVersion = Test-InstallCandidate $paths.Install
         if ($installedVersion -cne $version) { throw 'The installed application version changed.' }
+        # Provider probes require a separate user action.
         Invoke-PrivatePython $paths.Install @('-m', 'corinthos.user_state')
-        Invoke-PrivatePython $paths.Install @('-m', 'corinthos', 'adapters', 'refresh')
-        Show-InstallProgress 90 'Initialized user settings and refreshed providers'
+        Show-InstallProgress 90 'Initialized Corinthos user state'
         $launcher = Join-Path $paths.Bin 'corinthos.exe'
         $reported = & $launcher --version
         if ($LASTEXITCODE -ne 0 -or $reported -cne "corinthos $version") {

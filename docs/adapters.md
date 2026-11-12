@@ -97,10 +97,11 @@ services remain the caller's responsibility.
 ### Per-user and project provider configuration
 
 Use **Providers** on the Corinthos Home screen to inspect observed native
-capabilities, refresh detection, or change a per-user executable choice. The
-installer refreshes the same registry and succeeds when no provider is available.
-Run `corinthos adapters refresh` to repeat the bounded version/help checks from
-any directory.
+capabilities or change a per-user executable choice. Installation and reinstall
+leave the registry untouched and succeed without providers. A fresh install
+leaves capabilities unobserved. Choose **Refresh** in Home or run
+`corinthos adapters refresh` from any directory to request bounded native
+version/help checks.
 
 The versioned `providers.json` in Corinthos user state stores a map by provider
 identifier. Each entry can hold an explicit native executable and the last

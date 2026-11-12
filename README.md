@@ -24,7 +24,10 @@ corinthos
 Home lets you create or open a project, resume a recent project, and inspect
 providers and settings. Use `corinthos .` to open the project in the current
 directory. Scriptable commands such as `corinthos init .` and `corinthos project
---root . start` also work. Providers are optional.
+--root . start` also work. Providers are optional. Installation and reinstall
+leave provider settings and observations untouched and run no provider CLIs.
+Choose **Providers → Refresh** in Home or run `corinthos adapters refresh` to
+request capability checks explicitly.
 
 Installation uses the current account and owns its private CPython 3.14.10
 embeddable runtime, packaged application resources and pinned dependencies.
