@@ -128,10 +128,11 @@ checkout files. Practical implementation choices are recorded in
 
 ## Verification and delivery
 
-Use a CPython 3.12 virtual environment for the verified baseline and run the
-relevant commands. Package metadata declares Python `>=3.12`; this does not
-establish verification of Python 3.13 or newer. The [README](README.md#prerequisites)
-provides the baseline details and direct executable paths for PowerShell and POSIX.
+CI covers CPython 3.12 and 3.14.10 in clean virtual environments on Windows and
+Ubuntu. The Windows source-install smoke uses the pinned official CPython
+3.14.10 embeddable runtime and exercises the per-user command separately.
+Package metadata declares Python `>=3.12`. The [README](README.md#contributor-setup)
+provides contributor setup and direct executable paths for PowerShell and POSIX.
 
 ```text
 python -m pip install -e ".[dev]"

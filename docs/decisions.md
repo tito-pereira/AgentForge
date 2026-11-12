@@ -12,13 +12,14 @@ Product requirements revision v0.2 targets Core v0.1.
 
 ## Current Python baseline
 
-Package metadata declares Python `>=3.12`. The verified baseline is CPython 3.12
-on Windows and Ubuntu; Python 3.13 and newer have not been verified. Post-merge
+Package metadata declares Python `>=3.12`. CI covers CPython 3.12 and 3.14.10
+on Windows and Ubuntu. Historical post-merge
 [CI run 43100767021](https://github.com/tito-pereira/Corinthos/actions/runs/43100767021)
 at commit `b35fc74b96c3dc86d898c01f7fbe3cd6e0582169` exercised CPython 3.12.10
 on Windows and CPython 3.12.16 on Ubuntu. These are observations for that exact
-commit, not evidence for other Python versions or later changes. The
-[installation commands](../README.md#prerequisites) use the verified baseline.
+commit. The [contributor commands](../README.md#contributor-setup) use CPython
+3.12. The [Windows source installer](../README.md#install-on-windows) stages an
+isolated CPython 3.14.10 embeddable runtime and checksum-verified dependencies.
 
 ## Historical Phase 0 practical choices
 

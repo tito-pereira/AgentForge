@@ -2,14 +2,18 @@
 """Corinthos command-line entry point."""
 
 import argparse
+import sys
+from pathlib import Path
 
 from corinthos import __version__
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
     parser = argparse.ArgumentParser(
         prog="corinthos",
         description="Corinthos Core - contracts and human-led project negotiation.",
+        epilog="Run corinthos for Home or corinthos . to open the current project.",
     )
     parser.add_argument("--version", action="version", version=f"corinthos {__version__}")
     from corinthos.bootstrap import add_cli as configure_bootstrap
@@ -29,6 +33,10 @@ def main(argv: list[str] | None = None) -> int:
     configure_build(commands)
     configure_playtest(commands)
     configure_version(commands)
+    if not argv or argv == ["."]:
+        from corinthos.app_shell import run_shell
+
+        return run_shell(parser, current=Path(".") if argv else None)
     arguments = parser.parse_args(argv)
     if hasattr(arguments, "handler"):
         return arguments.handler(arguments)

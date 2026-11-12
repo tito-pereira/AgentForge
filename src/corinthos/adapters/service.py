@@ -22,7 +22,7 @@ from corinthos.contracts import ContractRef, ContractStore, IntegrityError
 from corinthos.contracts.model import ID_PATTERN, canonical_json
 from corinthos.standard import load_standard
 
-from .discovery import windows_codex_command
+from .discovery import ordinary_windows_executable, windows_codex_command, windows_path_executable
 from .model import AgentResult, Capabilities, ContextInput, PreparedContext
 from .process import run_process
 from .process_control import start_process
@@ -127,7 +127,9 @@ class AdapterManager:
             if os.name == "nt" and provider == "codex":
                 return windows_codex_command(os.get_exec_path(), platform.machine())
             executable = (
-                shutil.which(provider + ".exe") if os.name == "nt" else shutil.which(provider)
+                windows_path_executable(os.get_exec_path(), provider)
+                if os.name == "nt"
+                else shutil.which(provider)
             )
             if executable is None:
                 return (
@@ -138,7 +140,11 @@ class AdapterManager:
                 )
             command = (executable,)
         executable = Path(command[0])
-        if not executable.is_absolute() or not executable.is_file():
+        if os.name == "nt" and executable.suffix.lower() in {".cmd", ".bat", ".ps1"}:
+            return None, source, None, "Command wrappers are not native provider executables."
+        if not executable.is_absolute() or not (
+            ordinary_windows_executable(executable) if os.name == "nt" else executable.is_file()
+        ):
             return (
                 None,
                 source,
@@ -147,8 +153,6 @@ class AdapterManager:
                 if source == "explicit"
                 else "The discovered native executable is inaccessible.",
             )
-        if os.name == "nt" and executable.suffix.lower() in {".cmd", ".bat", ".ps1"}:
-            return None, source, None, "Command wrappers are not native provider executables."
         return command, source, None, None
 
     def _command(self, provider):
