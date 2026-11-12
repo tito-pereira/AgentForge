@@ -18,6 +18,8 @@ class Capabilities:
     native_resume: bool = False
     read_only: bool = False
     reason: str | None = None
+    executable: str | None = None
+    discovery: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -26,8 +26,10 @@ corinthos project product-review --help
 
 Initialization uses packaged approved policy/schema outside the checkout,
 validates mandatory M1–M5 and preserves unrelated user instruction content.
-Inspect `init --help` for explicit native executable/configuration options.
-Missing providers are reported honestly. Free Claude chat does not establish
+Inspect `init --help` for initial native executable options. After initialization,
+use [adapters configure/reset/show](adapters.md#provider-configuration-after-initialization)
+to change provider choices without rebuilding bootstrap or project state.
+Missing or undiscovered providers are reported honestly. Free Claude chat does not establish
 authenticated Claude Code access. Help, status, history and manual negotiation
 start no native work. `project advise` is explicit, advisory and provenance-bound;
 its suggestions grant no requirement or Validation authority.

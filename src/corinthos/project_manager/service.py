@@ -107,6 +107,10 @@ def _normalized(text):
     return " ".join(text.casefold().split())
 
 
+def _has_placeholders(criteria):
+    return any(_normalized(item["criterion"]) in _PLACEHOLDERS for item in criteria)
+
+
 def _shape(condition):
     if not condition:
         raise ValueError
@@ -731,7 +735,7 @@ class ProjectManager:
         ]
         if any(not item["acceptance_criteria"] for item in payload["requirements"]):
             issues.append("Every requirement needs at least one acceptance criterion.")
-        if any(_normalized(item["criterion"]) in _PLACEHOLDERS for item in criteria):
+        if _has_placeholders(criteria):
             issues.append("Replace unresolved acceptance or success criterion placeholders.")
         if any(item["answer"] is None for item in snapshot["questions"]):
             issues.append("Resolve the outstanding clarification questions.")
@@ -751,8 +755,8 @@ class ProjectManager:
             )
         return issues
 
-    def assess(self, session_id):
-        snapshot = self.get(session_id)
+    def structural_issues(self, snapshot):
+        """Check a saved draft snapshot without invoking advisory assistance."""
         issues = self._issues(snapshot)
         try:
             self._bounded(snapshot, final=True)
@@ -771,11 +775,57 @@ class ProjectManager:
             )
         except ValueError:
             issues.append("Complete the required Project Contract fields.")
+        return list(dict.fromkeys(issues))
+
+    def _require_revision_change(self, snapshot):
+        if (
+            snapshot["base_ref"] is not None
+            and snapshot["payload"] == self._base(snapshot["base_ref"])["payload"]
+        ):
+            raise ConflictError(
+                "Unchanged negotiation content does not create a new Project Contract revision."
+            )
+
+    @staticmethod
+    def specification_progress(snapshot) -> dict[str, bool]:
+        """Identify complete required fields in a saved draft snapshot."""
+        payload = snapshot["payload"]
+        requirements = payload["requirements"]
+        success = payload["success_criteria"]
+        return {
+            "vision": bool(payload["vision"].strip()),
+            "included": bool(payload["scope"]["included"]),
+            "requirements": bool(requirements)
+            and all(
+                item["acceptance_criteria"] and not _has_placeholders(item["acceptance_criteria"])
+                for item in requirements
+            ),
+            "success_criteria": bool(success) and not _has_placeholders(success),
+        }
+
+    def completion(self, snapshot) -> int:
+        """Score structural readiness for exact review without changing the draft."""
+        complete = sum(self.specification_progress(snapshot).values())
+        if (
+            complete == 4
+            and snapshot["state"] not in _CLOSED
+            and not self.structural_issues(snapshot)
+        ):
+            try:
+                self._require_revision_change(snapshot)
+            except IntegrityError:
+                return 80
+            return 100
+        return 20 * complete
+
+    def assess(self, session_id, *, include_assistance=True):
+        snapshot = self.get(session_id)
+        issues = self.structural_issues(snapshot)
         unknowns = [
             "Natural-language consistency and testability require human review.",
             "Technical feasibility and implemented product compliance are NOT_VERIFIED.",
         ]
-        if self.assistance is not None:
+        if include_assistance and self.assistance is not None:
             unknowns.append(
                 "Optional assistance is advisory and has no publication or approval authority."
             )
@@ -788,20 +838,15 @@ class ProjectManager:
                 unknowns.append(
                     "Optional assistance was unavailable or returned an invalid advisory response."
                 )
-        return {"issues": list(dict.fromkeys(issues)), "unknowns": unknowns}
+        return {"issues": issues, "unknowns": unknowns}
 
     def review(self, session_id, expected_version, *, actor_id):
         snapshot = self._editable(session_id, expected_version)
-        assessment = self.assess(session_id)
-        if assessment["issues"]:
+        if self.structural_issues(snapshot):
             raise IntegrityError(
                 "The draft needs clarification before an exact publication review."
             )
-        base = None if snapshot["base_ref"] is None else self._base(snapshot["base_ref"])
-        if base is not None and snapshot["payload"] == base["payload"]:
-            raise ConflictError(
-                "Unchanged negotiation content does not create a new Project Contract revision."
-            )
+        self._require_revision_change(snapshot)
         document = self._document(snapshot, actor_id)
         validate_schema(document)
         snapshot["review"] = {

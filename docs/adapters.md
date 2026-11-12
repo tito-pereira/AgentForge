@@ -94,6 +94,63 @@ sandbox and cannot contain effects deliberately routed through external services
 or an independently running broker. Authentication, native hooks and configured
 services remain the caller's responsibility.
 
+### Provider configuration after initialization
+
+`corinthos init` does not require an installed or discoverable provider. Later,
+inspect saved choices without running a provider, or explicitly probe capabilities:
+
+```text
+corinthos adapters show --root PROJECT --provider codex
+corinthos adapters capabilities --root PROJECT --provider codex
+corinthos adapters configure codex --root PROJECT --executable ABSOLUTE_NATIVE_PATH
+corinthos adapters reset codex --root PROJECT
+```
+
+The same commands accept `claude`. Configuration requires an existing initialized
+root, an absolute native executable and successful bounded version/help probes
+with the required JSON/stdin interfaces. Invalid or unsupported replacements
+leave the previous choice intact. `show` reads saved configuration only;
+`capabilities` reports the effective executable, discovery source, interfaces
+and diagnostic. It performs bounded native probes, not an agent task.
+
+Choices are local operational files `.corinthos/adapter-codex.json` and
+`.corinthos/adapter-claude.json`, not product contracts. Each update replaces only
+one provider's bounded private JSON file atomically. It does not rebuild
+`bootstrap.json`, rewrite instructions or open/replace `state.db`. Precedence is
+an explicit one-off CLI executable, then the saved operational choice, then an
+initial bootstrap executable, then automatic discovery. Reset saves an explicit
+null choice so even an old bootstrap executable is cleared from effective
+selection; it does not remove unrelated provider settings. Existing projects
+without these sidecars retain their initial configuration.
+
+Saved choices are consumed by installed capability checks, PM advice and the
+Workflow execution CLI. Workflow's explicit executable/argument-prefix options
+still override the saved choice for that operation.
+
+### Windows npm discovery
+
+For Codex on Windows, discovery inspects only absolute PATH directories and fixed
+package paths associated with recognized npm shims. It checks the `@openai/codex`
+package name/bin/version and matching Windows platform dependency, or the known
+legacy in-package vendor layout. It never invokes the shim or recursively searches
+the disk for `codex.exe`. Redirected paths and oversized metadata are rejected.
+The selected native binary must report the matching `codex-cli` version and the
+required interfaces before npm discovery reports it available. These layout and
+capability checks are not package-publisher authentication.
+
+The `discovery` result distinguishes `npm`, native `path`, conscious `explicit`
+selection, `npm-unresolved`, `ambiguous` and `none`. A shim without a safely
+resolved native package gets a specific diagnostic. Multiple native candidates
+are not silently ranked; use `configure` or a one-off `--codex-executable` to
+select one. Missing paths, failed probes and unsupported JSON/stdin interfaces
+remain separate diagnostics. Not discovered does not mean definitely uninstalled.
+
+The actual npm Codex 0.167.0 native executable passed bounded version/help and
+capability checks before this correction. That evidence does not establish a
+completed native task, authentication, every Codex version or cross-provider
+interoperability. Provider tasks and product acceptance retain their separate
+verification and authority requirements.
+
 ## Results and native resume
 
 `AgentResult` records provider, status, task/attempt IDs, observed version, exit

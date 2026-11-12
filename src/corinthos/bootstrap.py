@@ -65,7 +65,7 @@ def _commands(commands, *, require_present=False):
             or (os.name == "nt" and path.suffix.lower() != ".exe")
         ):
             raise IntegrityError(
-                "Configure an absolute native executable path that exists at initialization."
+                "Configure an absolute native executable path that currently exists."
             )
         result[provider] = [str(path)]
     return result
@@ -160,6 +160,68 @@ def _save_profile(root, value):
         temporary.unlink(missing_ok=True)
 
 
+def _read_adapter(path, provider):
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    if (
+        is_link(info)
+        or not stat.S_ISREG(info.st_mode)
+        or info.st_nlink != 1
+        or info.st_size > _MAX_PROFILE
+    ):
+        raise IntegrityError("Adapter configuration must be a bounded ordinary private file.")
+    with path.open("rb") as stream:
+        if not os.path.samestat(info, os.fstat(stream.fileno())):
+            raise IntegrityError("Adapter configuration changed while opening it.")
+        data = stream.read(_MAX_PROFILE + 1)
+    try:
+        value = json.loads(data)
+        if (
+            len(data) > _MAX_PROFILE
+            or canonical_json(value).encode("utf-8") != data
+            or not isinstance(value, dict)
+            or set(value) != {"version", "provider", "executable"}
+            or type(value["version"]) is not int
+            or value["version"] != 1
+            or value["provider"] != provider
+        ):
+            raise ValueError
+        if value["executable"] is not None:
+            _commands({provider: [value["executable"]]})
+        return value
+    except (ValueError, TypeError, RecursionError, UnicodeError):
+        raise IntegrityError(
+            "Adapter configuration is invalid; preserve it for inspection."
+        ) from None
+
+
+def _save_adapter(root, provider, executable):
+    private = private_directory(root)
+    path = private / f"adapter-{provider}.json"
+    existing = _read_adapter(path, provider)
+    parent_info = private.stat()
+    descriptor, name = tempfile.mkstemp(prefix=f".adapter-{provider}-", dir=private)
+    temporary = Path(name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(
+                canonical_json(
+                    {"version": 1, "provider": provider, "executable": executable}
+                ).encode("utf-8")
+            )
+            stream.flush()
+            os.fsync(stream.fileno())
+        if not os.path.samestat(parent_info, private_directory(root).stat()):
+            raise IntegrityError("Private storage changed while configuring the adapter.")
+        if _read_adapter(path, provider) != existing:
+            raise ConflictError("Adapter configuration changed before publication.")
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _configured(policy_path=None, schema_path=None, commands=None):
     with ExitStack() as stack:
         resource = files("corinthos.resources")
@@ -204,18 +266,82 @@ def adapter_manager(root, *, policy_path=None, schema_path=None, commands=None, 
     saved = None
     if private.exists() or private.is_symlink():
         saved = _read_profile(private_directory(root) / "bootstrap.json")
-    explicit = policy_path is not None or schema_path is not None or commands is not None
-    profile = (
-        _configured(policy_path, schema_path, commands) if saved is None or explicit else saved
-    )
-    if saved is not None and saved != profile:
-        raise ConflictError("Explicit adapter settings conflict with the saved bootstrap profile.")
+    profile = saved if saved is not None else _configured(policy_path, schema_path)
+    if saved is not None and (policy_path is not None or schema_path is not None):
+        supplied = _configured(policy_path, schema_path)
+        if any(saved[key] != supplied[key] for key in ("standard", "standard_sha256")):
+            raise ConflictError(
+                "Explicit Standard settings conflict with the saved bootstrap profile."
+            )
+    selected = dict(profile["commands"])
+    if private.exists():
+        for provider in _PROVIDERS:
+            operational = _read_adapter(
+                private_directory(root) / f"adapter-{provider}.json", provider
+            )
+            if operational is not None:
+                selected.pop(provider, None)
+                if operational["executable"] is not None:
+                    selected[provider] = [operational["executable"]]
+    if commands is not None:
+        selected.update(_commands(commands, require_present=True))
     with tempfile.TemporaryDirectory(prefix="corinthos-standard-") as directory:
         policy = Path(directory) / "standard.json"
         policy.write_text(canonical_json(profile["standard"]), encoding="utf-8")
         with as_file(files("corinthos.resources").joinpath("standard.schema.json")) as schema:
-            manager = AdapterManager(policy, schema, store=store, commands=profile["commands"])
+            manager = AdapterManager(policy, schema, store=store, commands=selected)
     return manager
+
+
+def show_adapters(root, *, provider=None):
+    """Read saved adapter choices without executing an external program."""
+    if provider is not None and provider not in _PROVIDERS:
+        raise IntegrityError("Select the codex or claude adapter.")
+    root = _root(root)
+    private = root / ".corinthos"
+    saved = None
+    if private.exists() or private.is_symlink():
+        private = private_directory(root)
+        saved = _read_profile(private / "bootstrap.json")
+    result = []
+    for name in (provider,) if provider else _PROVIDERS:
+        command = saved["commands"].get(name) if saved is not None else None
+        operational = _read_adapter(private / f"adapter-{name}.json", name) if saved else None
+        executable = command[0] if command else None
+        configuration = "initial" if command else "default"
+        if operational is not None:
+            executable = operational["executable"]
+            configuration = "operational"
+        result.append(
+            {
+                "provider": name,
+                "executable": executable,
+                "configuration": configuration,
+                "selection": "explicit" if executable else "autodiscovery",
+            }
+        )
+    return result
+
+
+def configure_adapter(root, provider, executable=None):
+    """Persist one validated native choice, or reset it to automatic discovery."""
+    if provider not in _PROVIDERS:
+        raise IntegrityError("Select the codex or claude adapter.")
+    root = _root(root)
+    private = private_directory(root)
+    if _read_profile(private / "bootstrap.json") is None:
+        raise IntegrityError("Initialize this workspace before configuring adapters.")
+    _read_adapter(private / f"adapter-{provider}.json", provider)
+    if executable is not None:
+        command = _commands({provider: [str(executable)]}, require_present=True)
+        capabilities = adapter_manager(root, commands=command).discover(provider)
+        if not (capabilities.available and capabilities.json_events and capabilities.stdin_prompt):
+            raise IntegrityError(
+                "The native executable did not verify the required JSON/stdin interface."
+            )
+        executable = command[provider][0]
+    _save_adapter(root, provider, executable)
+    return show_adapters(root, provider=provider)[0]
 
 
 def initialize(root, *, policy_path=None, schema_path=None, commands=None):
@@ -257,9 +383,7 @@ def add_cli(subparsers):
     init.add_argument("root", type=Path, nargs="?", default=Path.cwd())
     _options(init)
     init.set_defaults(handler=run, bootstrap_action="init")
-    adapters = subparsers.add_parser(
-        "adapters", help="Inspect explicit native adapter capabilities."
-    )
+    adapters = subparsers.add_parser("adapters", help="Inspect and configure native adapters.")
     actions = adapters.add_subparsers(dest="bootstrap_action", required=True)
     capabilities = actions.add_parser(
         "capabilities", help="Run bounded native version/help discovery."
@@ -268,10 +392,35 @@ def add_cli(subparsers):
     capabilities.add_argument("--provider", choices=_PROVIDERS)
     _options(capabilities)
     capabilities.set_defaults(handler=run)
+    show = actions.add_parser("show", help="Show saved adapter choices without running a provider.")
+    show.add_argument("--root", type=Path, default=Path.cwd())
+    show.add_argument("--provider", choices=_PROVIDERS)
+    show.set_defaults(handler=run)
+    for action in ("configure", "reset"):
+        configure = actions.add_parser(
+            action, help=f"{action.capitalize()} one saved adapter choice."
+        )
+        configure.add_argument("provider", choices=_PROVIDERS)
+        configure.add_argument("--root", type=Path, default=Path.cwd())
+        if action == "configure":
+            configure.add_argument("--executable", type=Path, required=True)
+        configure.set_defaults(handler=run)
 
 
 def run(arguments):
     try:
+        if arguments.bootstrap_action == "show":
+            print(render_fields(show_adapters(arguments.root, provider=arguments.provider)))
+            return 0
+        if arguments.bootstrap_action in {"configure", "reset"}:
+            print(
+                render_fields(
+                    configure_adapter(
+                        arguments.root, arguments.provider, getattr(arguments, "executable", None)
+                    )
+                )
+            )
+            return 0
         commands = {
             provider: [str(getattr(arguments, provider + "_executable"))]
             for provider in _PROVIDERS
@@ -290,5 +439,5 @@ def run(arguments):
             print(render_fields([asdict(manager.discover(provider)) for provider in providers]))
         return 0
     except (ContractError, OSError, ValueError) as error:
-        print("Initialization or capability discovery failed. " + safe_text(error), file=sys.stderr)
+        print("Initialization or adapter operation failed. " + safe_text(error), file=sys.stderr)
         return 1

@@ -2,6 +2,7 @@
 """Validated policy preparation and explicit, bounded external-agent calls."""
 
 import os
+import platform
 import queue
 import re
 import shutil
@@ -21,6 +22,7 @@ from corinthos.contracts import ContractRef, ContractStore, IntegrityError
 from corinthos.contracts.model import ID_PATTERN, canonical_json
 from corinthos.standard import load_standard
 
+from .discovery import windows_codex_command
 from .model import AgentResult, Capabilities, ContextInput, PreparedContext
 from .process import run_process
 from .process_control import start_process
@@ -117,22 +119,40 @@ class AdapterManager:
             raise IntegrityError("Select the codex or claude adapter.")
         return PROVIDERS[provider]
 
-    def _command(self, provider):
+    def _selection(self, provider):
         self._provider(provider)
         command = self._commands.get(provider)
+        source = "explicit" if command is not None else "path"
         if command is None:
+            if os.name == "nt" and provider == "codex":
+                return windows_codex_command(os.get_exec_path(), platform.machine())
             executable = (
                 shutil.which(provider + ".exe") if os.name == "nt" else shutil.which(provider)
             )
             if executable is None:
-                return None
+                return (
+                    None,
+                    "none",
+                    None,
+                    "No native executable was discovered in PATH. This does not prove the provider is not installed; configure its explicit native path.",
+                )
             command = (executable,)
         executable = Path(command[0])
         if not executable.is_absolute() or not executable.is_file():
-            return None
+            return (
+                None,
+                source,
+                None,
+                "The explicit native executable is invalid or inaccessible."
+                if source == "explicit"
+                else "The discovered native executable is inaccessible.",
+            )
         if os.name == "nt" and executable.suffix.lower() in {".cmd", ".bat", ".ps1"}:
-            return None
-        return command
+            return None, source, None, "Command wrappers are not native provider executables."
+        return command, source, None, None
+
+    def _command(self, provider):
+        return self._selection(provider)[0]
 
     @staticmethod
     def _help(command, arguments):
@@ -197,21 +217,39 @@ class AdapterManager:
 
     def discover(self, provider):
         self._provider(provider)
-        command = self._command(provider)
+        command, source, expected_version, reason = self._selection(provider)
+        details = {"discovery": source, "executable": command[0] if command else None}
         if command is None:
             return Capabilities(
                 provider,
                 False,
-                reason="A native executable was not found. Supply its explicit path.",
+                reason=reason,
+                **details,
             )
         reported = self._help(command, ("--version",))
         general = self._help(command, ("--help",))
         if reported is None or general is None:
-            return Capabilities(provider, False, reason="The executable version/help probe failed.")
+            return Capabilities(
+                provider, False, reason="The executable version/help probe failed.", **details
+            )
         match = re.search(r"\b\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?\b", reported)
+        if source == "npm":
+            match = re.search(
+                r"(?m)^codex-cli\s+(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\s*$", reported
+            )
+            if match is None or match.group(1) != expected_version:
+                return Capabilities(
+                    provider,
+                    False,
+                    reason="The npm native executable did not report its declared Codex CLI version.",
+                    **details,
+                )
         if match is None:
             return Capabilities(
-                provider, False, reason="The executable did not report a recognized version."
+                provider,
+                False,
+                reason="The executable did not report a recognized version.",
+                **details,
             )
         if provider == "codex":
             help_text = self._help(command, ("exec", "--help")) or ""
@@ -231,13 +269,14 @@ class AdapterManager:
             read_only = "--tools" in general and "--disallowedTools" in general
         return Capabilities(
             provider,
-            True,
-            match.group(),
+            bool(streaming and stdin) if source == "npm" else True,
+            match.group(1) if source == "npm" else match.group(),
             streaming,
             stdin,
             resume,
             read_only,
             None if streaming and stdin else "The required JSON/stdin interface is unsupported.",
+            **details,
         )
 
     def _context(self, context):
@@ -520,7 +559,7 @@ class AdapterManager:
         try:
             result = run_process(
                 implementation,
-                self._command(provider),
+                self._commands.get(provider) or (capabilities.executable,),
                 self._prompt(value, diagnostic=diagnostic),
                 workspace,
                 capabilities=capabilities,

@@ -10,6 +10,16 @@ following practical choices within the Phase 0 order. Their provenance is
 technical implementation; no individual human approval is attributed to them.
 Product requirements revision v0.2 targets Core v0.1.
 
+## Current Python baseline
+
+Package metadata declares Python `>=3.12`. The verified baseline is CPython 3.12
+on Windows and Ubuntu; Python 3.13 and newer have not been verified. Post-merge
+[CI run 43100767021](https://github.com/tito-pereira/Corinthos/actions/runs/43100767021)
+at commit `b35fc74b96c3dc86d898c01f7fbe3cd6e0582169` exercised CPython 3.12.10
+on Windows and CPython 3.12.16 on Ubuntu. These are observations for that exact
+commit, not evidence for other Python versions or later changes. The
+[installation commands](../README.md#prerequisites) use the verified baseline.
+
 ## Historical Phase 0 practical choices
 
 | Choice | Rationale and boundary |

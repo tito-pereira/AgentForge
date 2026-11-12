@@ -31,7 +31,8 @@ separate current admission gates.
 
 ## Derive and review a plan
 
-Use an installed Python 3.12 environment and an existing project directory
+Use an installed CPython 3.12 environment, the
+[verified baseline](../README.md#prerequisites), and an existing project directory
 containing approved contracts. Set `PROJECT_ROOT` to that directory.
 `STANDARD_YAML` and `STANDARD_SCHEMA` are the paths to the existing Standard
 files in the Corinthos checkout. Use real IDs from your published references.
