@@ -451,6 +451,7 @@ release. Actual results and outstanding limits remain tied to their evidence.
 
 ## Engineering documentation
 
+- [v0.1 baseline and compatibility records](docs/v0.1/baseline.md)
 - [Architecture and six Engines](docs/architecture.md)
 - [Eight contract types](docs/contracts.md)
 - [Project Manager tutorial, approval and service API](docs/project-manager.md)
