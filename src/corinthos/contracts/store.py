@@ -31,6 +31,7 @@ _APPLICATION_ID = 0x4E554B59
 _SCHEMA_VERSION = 9
 _LOCK_TIMEOUT = 5.0
 _BUSY_CODES = {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
+_BUSY_MESSAGE = "The state database is busy. Retry with the current revision."
 _ACTIVE_TYPES = frozenset({"PROJECT", "WORKFLOW", "MODULE", "TECHNOLOGY_DECISION", "VALIDATION"})
 _MIGRATION_V1 = (
     """CREATE TABLE contracts (
@@ -848,17 +849,21 @@ def _check_database_files(database: Path, *, allow_existing: bool = True) -> Non
             raise ConflictError("A state backup already exists or has existing sidecars.")
 
 
+class _WriteLockBusy(ConflictError):
+    """The write transaction did not start and can be attempted again."""
+
+
 class ContractStore:
     """Open or initialize the state database under an existing project directory."""
 
-    def __init__(self, project_root: str | Path):
+    def __init__(self, project_root: str | Path, *, _write_lock_timeout: float | None = None):
         try:
             self._project_root = Path(project_root).resolve(strict=True)
             state = private_directory(self._project_root, create=True)
         except (IntegrityError, OSError, RuntimeError):
             raise StoreError("Cannot open the private project state directory.") from None
         self._database_path = state / "state.db"
-        with self._transaction(create=True) as connection:
+        with self._transaction(create=True, lock_timeout=_write_lock_timeout) as connection:
             self._migrate(connection)
 
     @property
@@ -1015,9 +1020,7 @@ class ContractStore:
             code = getattr(error, "sqlite_errorcode", 0)
             primary_code = code & 255
             if primary_code in _BUSY_CODES:
-                raise ConflictError(
-                    "The state database is busy. Retry with the current revision."
-                ) from None
+                raise ConflictError(_BUSY_MESSAGE) from None
             if primary_code == sqlite3.SQLITE_READONLY:
                 raise StoreError("The state database is read-only.") from None
             if primary_code in {sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB}:
@@ -1029,10 +1032,23 @@ class ContractStore:
             raise StoreError("Cannot access private state database files.") from None
 
     @contextmanager
-    def _transaction(self, *, create: bool = False) -> Iterator[sqlite3.Connection]:
+    def _transaction(
+        self, *, create: bool = False, lock_timeout: float | None = None
+    ) -> Iterator[sqlite3.Connection]:
         with self._connection(create=create) as connection:
-            connection.execute("BEGIN IMMEDIATE")
+            if lock_timeout is not None:
+                connection.execute(f"PRAGMA busy_timeout = {int(lock_timeout * 1000)}")
             try:
+                connection.execute("BEGIN IMMEDIATE")
+            except sqlite3.Error as error:
+                primary_code = getattr(error, "sqlite_errorcode", 0) & 255
+                if lock_timeout is not None and primary_code in _BUSY_CODES:
+                    raise _WriteLockBusy(_BUSY_MESSAGE) from None
+                raise
+            try:
+                if lock_timeout is not None:
+                    # Keep the usual wait for readers when committing the acquired write.
+                    connection.execute(f"PRAGMA busy_timeout = {int(_LOCK_TIMEOUT * 1000)}")
                 yield connection
                 connection.execute("COMMIT")
             except BaseException:

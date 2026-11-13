@@ -2,7 +2,9 @@
 """Exercise process supervision behind the shared application and RPC."""
 
 import hashlib
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from threading import Event
 from time import monotonic, sleep
 from types import SimpleNamespace
@@ -17,7 +19,9 @@ from corinthos.application import context, sidecar, workspace
 from corinthos.application.sessions import SessionApplication
 from corinthos.bootstrap import initialize
 from corinthos.contracts import ConflictError, ContractStore
+from corinthos.contracts import store as contract_storage
 from corinthos.project_state import ProjectStateService
+from corinthos.sessions import repository as session_storage
 from corinthos.sessions.model import SessionError
 from corinthos.sessions.repository import SessionRepository
 from corinthos.sessions.supervisor import SessionSupervisor
@@ -25,10 +29,11 @@ from corinthos.work import WorkService
 
 
 class SyntheticManager:
-    def __init__(self, *, linger=False, resumable=True, start_gate=None):
+    def __init__(self, *, linger=False, resumable=True, start_gate=None, before_cleanup=None):
         self.linger = linger
         self.resumable = resumable
         self.start_gate = start_gate
+        self.before_cleanup = before_cleanup
         self.selected = []
         self.resumes = []
         self.prompts = []
@@ -83,6 +88,8 @@ class SyntheticManager:
         status = "COMPLETED"
         if self.linger:
             status = "CANCELLED" if cancel.wait(timeout) else "TIMEOUT"
+        if status == "CANCELLED" and self.before_cleanup is not None:
+            self.before_cleanup()
         return AgentResult(plan.provider, status, task_id, attempt_id)
 
 
@@ -160,16 +167,19 @@ def test_one_project_writer_cross_supervisor_and_cancel(tmp_path):
     one, two = _project(a), _project(b)
     try:
         with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = [pool.submit(s.start, a, one.work_item_id, "codex") for s in (first, second)]
+            futures = {
+                pool.submit(supervisor.start, a, one.work_item_id, "codex"): supervisor
+                for supervisor in (first, second)
+            }
             winners = []
-            for future in futures:
+            for future, supervisor in futures.items():
                 try:
-                    winners.append(future.result())
+                    winners.append((supervisor, future.result()))
                 except ConflictError:
                     continue
-        [session] = winners
+        [(owner, session)] = winners
         other = second.start(b, two.work_item_id, "claude", timeout_seconds=1)
-        cross = second if session.owner_id != other.owner_id else first
+        cross = second if owner is first else first
         cross.cancel(a, session.session_id, generation=session.run_generation)
         assert _until(
             lambda: SessionRepository(a).get(session.session_id),
@@ -181,6 +191,165 @@ def test_one_project_writer_cross_supervisor_and_cancel(tmp_path):
     finally:
         first.close()
         second.close()
+
+
+@pytest.fixture
+def running_cancellation(tmp_path):
+    root = tmp_path / "cancellation"
+    item = _project(root)
+    database = ContractStore(root).database_path
+    started, stopping, confirm_cleanup = Event(), Event(), Event()
+
+    def pause_cleanup():
+        stopping.set()
+        assert confirm_cleanup.wait(8)
+
+    manager = SyntheticManager(linger=True, start_gate=started)
+    previous = SessionSupervisor(manager_factory=lambda *args, **kwargs: manager)
+    owner = SessionSupervisor(manager_factory=lambda *args, **kwargs: manager)
+    cross = SessionSupervisor()
+    repository = SessionRepository(root)
+    try:
+        original = previous.start(root, item.work_item_id, "codex")
+        assert started.wait(8)
+        assert previous.close()
+        assert repository.get(original.session_id).state == "INTERRUPTED"
+
+        started.clear()
+        manager.before_cleanup = pause_cleanup
+        resumed = owner.recover(root, original.session_id)
+        assert started.wait(8)
+        session = repository.get(resumed.session_id)
+        assert session.state == "RUNNING" and session.run_generation == original.run_generation + 1
+        yield SimpleNamespace(
+            root=root,
+            item=item,
+            database=database,
+            session=session,
+            stale_generation=original.run_generation,
+            owner=owner,
+            cross=cross,
+            repository=repository,
+            stopping=stopping,
+            confirm_cleanup=confirm_cleanup,
+        )
+    finally:
+        confirm_cleanup.set()
+        assert previous.close()
+        assert owner.close()
+        assert cross.close()
+
+
+def _assert_cancelled(case):
+    session_id = case.session.session_id
+    case.confirm_cleanup.set()
+    result = case.owner.wait(case.root, session_id)
+    assert result.state == "CANCELLED" and result.finished_at
+    assert result.owner_id is None and not result.cleanup_unconfirmed
+    assert result.run_generation == case.session.run_generation
+    events = case.repository.events(session_id, limit=25)
+    assert [event.kind for event in events][-2:] == ["CANCEL_REQUESTED", "CANCELLED"]
+    assert [event.kind for event in events].count("CANCEL_REQUESTED") == 1
+    assert all(event.run_generation == result.run_generation for event in events[-2:])
+    assert WorkService(case.root).get(case.item.work_item_id) == case.item
+
+
+def test_cancel_retries_real_short_contention_and_waits_for_cleanup(
+    running_cancellation, monkeypatch
+):
+    case = running_cancellation
+    session_id = case.session.session_id
+    generation = case.session.run_generation
+    retry_delays = []
+    with closing(sqlite3.connect(case.database, autocommit=True)) as writer:
+        writer.execute("BEGIN IMMEDIATE")
+
+        def release_after_busy(delay):
+            retry_delays.append(delay)
+            assert writer.in_transaction
+            writer.execute("ROLLBACK")
+
+        monkeypatch.setattr(session_storage, "sleep", release_after_busy)
+        requested = case.cross.cancel(case.root, session_id, generation=generation)
+
+    assert retry_delays == [session_storage._CANCEL_RETRY_DELAYS[0]]
+    assert case.stopping.wait(8)
+    assert requested.state == "CANCELLING" and requested.finished_at is None
+    assert requested.owner_id == case.session.owner_id and requested.run_generation == generation
+    assert case.repository.get(session_id) == requested
+    with pytest.raises(ConflictError, match="not cancellable"):
+        case.cross.cancel(case.root, session_id, generation=case.stale_generation)
+    assert case.cross.cancel(case.root, session_id, generation=generation) == requested
+    assert retry_delays == [session_storage._CANCEL_RETRY_DELAYS[0]]
+    _assert_cancelled(case)
+
+
+def test_cancel_exhausts_real_contention_without_persisting_a_request(
+    running_cancellation, monkeypatch
+):
+    case = running_cancellation
+    session_id = case.session.session_id
+    generation = case.session.run_generation
+    retry_delays = []
+
+    def observe_delay(delay):
+        retry_delays.append(delay)
+        sleep(delay)
+
+    monkeypatch.setattr(session_storage, "sleep", observe_delay)
+    with closing(sqlite3.connect(case.database, autocommit=True)) as writer:
+        writer.execute("BEGIN IMMEDIATE")
+        started = monotonic()
+        with pytest.raises(ConflictError, match="database is busy"):
+            case.cross.cancel(case.root, session_id, generation=generation)
+        elapsed = monotonic() - started
+        assert writer.in_transaction
+        writer.execute("ROLLBACK")
+
+    assert retry_delays == list(session_storage._CANCEL_RETRY_DELAYS)
+    assert elapsed < 7
+    assert case.repository.get(session_id).state == "RUNNING"
+    assert not case.stopping.is_set()
+    assert all(
+        event.kind != "CANCEL_REQUESTED" for event in case.repository.events(session_id, limit=25)
+    )
+
+    requested = case.cross.cancel(case.root, session_id, generation=generation)
+    assert requested.state == "CANCELLING" and requested.finished_at is None
+    assert case.stopping.wait(8)
+    assert retry_delays == list(session_storage._CANCEL_RETRY_DELAYS)
+    _assert_cancelled(case)
+
+
+def test_cancel_does_not_retry_when_a_reader_blocks_commit(running_cancellation, monkeypatch):
+    case = running_cancellation
+    session_id = case.session.session_id
+    retry_delays, writes = [], []
+    record_event = SessionRepository._event
+
+    monkeypatch.setattr(contract_storage, "_LOCK_TIMEOUT", 0.05)
+    monkeypatch.setattr(session_storage, "sleep", retry_delays.append)
+    with closing(sqlite3.connect(case.database, autocommit=True)) as reader:
+        reader.row_factory = sqlite3.Row
+
+        def hold_reader_after_write(connection, row, kind, payload, now, native_kind=None):
+            record_event(connection, row, kind, payload, now, native_kind)
+            if kind == "CANCEL_REQUESTED":
+                writes.append(SessionRepository._row(connection, session_id)["state"])
+                reader.execute("BEGIN")
+                assert SessionRepository._row(reader, session_id)["state"] == "RUNNING"
+
+        monkeypatch.setattr(SessionRepository, "_event", staticmethod(hold_reader_after_write))
+        with pytest.raises(ConflictError, match="database is busy"):
+            case.cross.cancel(case.root, session_id, generation=case.session.run_generation)
+        reader.execute("ROLLBACK")
+
+    assert writes == ["CANCELLING"] and retry_delays == []
+    assert case.repository.get(session_id).state == "RUNNING"
+    assert not case.stopping.is_set()
+    assert all(
+        event.kind != "CANCEL_REQUESTED" for event in case.repository.events(session_id, limit=25)
+    )
 
 
 def test_explicit_native_recovery_uses_same_work_and_binding(tmp_path):

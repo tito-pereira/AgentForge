@@ -112,3 +112,14 @@ Windows desktop integration covers the real WebView with a deterministic local
 provider and leaves active process cleanup under the supervisor. The deferred
 Phase 3 live test with a second independent provider remains **NOT VERIFIED**.
 Provider switching and cross-provider resume remain outside Phase 4.
+
+## Cancellation under SQLite contention
+
+Explicit session cancellation retries only when SQLite reports `BUSY` or
+`LOCKED` while starting a write transaction. It makes three acquisition
+attempts with a 100 ms lock timeout and waits 25, 50 and 100 ms between attempts
+before falling back to the normal SQLite wait once. It rechecks the session
+generation, live lease and state under the acquired writer lock. A repeated
+request for the same active generation records one `CANCEL_REQUESTED` event.
+Contention during commit rolls back and is reported as a conflict. The
+supervisor still confirms process cleanup before recording `CANCELLED`.
