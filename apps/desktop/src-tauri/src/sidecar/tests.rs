@@ -19,10 +19,16 @@ for line in sys.stdin:
     method = request["method"]
     request_id = request["id"]
     if method == "system.handshake":
+        assert request["params"] == {"protocol_version": 2}
+        methods = ["system.handshake","system.version","project.status","providers.status","system.shutdown"]
+        if mode != "limited":
+            methods.extend(["projects.list", "future.method"])
+        if mode == "missing_core":
+            methods.remove("system.shutdown")
         result = {
-            "protocol_version": 2 if mode == "mismatch" else 1,
+            "protocol_version": 1 if mode == "mismatch" else 2,
             "version": "test",
-            "methods": ["system.handshake","system.version","project.status","providers.status","system.shutdown"],
+            "methods": methods,
         }
     elif method == "system.shutdown":
         if mode == "ignore_shutdown":
@@ -113,15 +119,27 @@ fn decode_rejects_mixed_or_unrecognized_frames() {
 #[test]
 fn handshake_failure_timeout_and_restart() {
     assert!(fixture("mismatch", HANDSHAKE_TIMEOUT, no_events()).is_err());
+    assert!(fixture("missing_core", HANDSHAKE_TIMEOUT, no_events()).is_err());
     assert!(fixture("malformed", HANDSHAKE_TIMEOUT, no_events()).is_err());
     let start = Instant::now();
     assert!(fixture("timeout", Duration::from_millis(150), no_events()).is_err());
     assert!(start.elapsed() < Duration::from_secs(6));
     let (mut child, handshake) = fixture("normal", HANDSHAKE_TIMEOUT, no_events()).unwrap();
-    assert_eq!(handshake.protocol_version, 1);
+    assert_eq!(handshake.protocol_version, 2);
+    assert!(handshake.supports("projects.list"));
+    assert!(handshake.supports("future.method"));
+    assert!(!handshake.supports("work.create"));
     assert_eq!(child.version().unwrap(), json!({"version":"test"}));
     child.shutdown().unwrap();
     assert!(child.child.try_wait().unwrap().unwrap().success());
+}
+
+#[test]
+fn optional_methods_are_detected_without_rejecting_the_connection() {
+    let (mut child, handshake) = fixture("limited", HANDSHAKE_TIMEOUT, no_events()).unwrap();
+    assert!(handshake.supports("system.version"));
+    assert!(!handshake.supports("projects.list"));
+    child.shutdown().unwrap();
 }
 
 #[test]
@@ -179,11 +197,15 @@ fn private_runtime_repeated_cycles() {
         }))
         .unwrap();
         assert_eq!(handshake.version, "0.1.0");
+        assert_eq!(handshake.protocol_version, 2);
+        assert!(handshake.supports("projects.list"));
+        assert!(handshake.supports("work.create"));
         assert_eq!(child.version().unwrap(), json!({"version": "0.1.0"}));
         let project = child.project_status(&root).unwrap();
         assert_eq!(project["exists"], true);
         assert_eq!(project["initialized"], true);
         assert!(child.providers_status().unwrap().is_object());
+        assert!(child.request("projects.list", json!({})).unwrap()["projects"].is_array());
         let pid = child.child.id();
         child.shutdown().unwrap();
         assert!(child.child.try_wait().unwrap().unwrap().success());

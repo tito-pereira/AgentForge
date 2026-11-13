@@ -57,11 +57,12 @@ def _path(filename: str, *, create: bool = False) -> Path:
     return root / filename
 
 
-def _validate(document):
+def _validate(filename: str, document):
+    supported = {1, 2} if filename == "recent-projects.json" else {1}
     if (
         not isinstance(document, dict)
         or type(document.get("version")) is not int
-        or document["version"] != 1
+        or document["version"] not in supported
     ):
         raise IntegrityError("Unsupported Corinthos user state document version.")
     return document
@@ -91,13 +92,13 @@ def _checked_file(path: Path, info: os.stat_result | None, *, lock: bool = False
 def _read(path: Path, default: dict) -> dict:
     info = _ordinary(path, stat.S_ISREG)
     if info is None:
-        return _validate(default)
+        return _validate(path.name, default)
     try:
         with _checked_file(path, info) as source:
             data = source.read(_MAX_BYTES + 1)
         if len(data) > _MAX_BYTES:
             raise ValueError("User state document exceeds size limit.")
-        return _validate(json.loads(data))
+        return _validate(path.name, json.loads(data))
     except (ValueError, RecursionError) as error:
         raise IntegrityError("Invalid Corinthos user state document.") from error
 
@@ -134,7 +135,7 @@ def update_state(filename: str, default: dict, transform) -> dict:
     path = _path(filename, create=True)
     with _lock(path.with_suffix(".lock")):
         current = _read(path, default)
-        updated = _validate(transform(deepcopy(current)))
+        updated = _validate(filename, transform(deepcopy(current)))
         if updated == current and path.is_file():
             return updated
         try:

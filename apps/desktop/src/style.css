@@ -64,12 +64,12 @@ p { color: #3d554e; }
 .facts dd { margin: 0; font-weight: 650; }
 label { display: block; margin-bottom: 0.3rem; font-size: 0.88rem; font-weight: 650; }
 .field-row { display: flex; flex-wrap: wrap; gap: 0.45rem; }
-input, button {
+input, button, select, textarea {
   font: inherit;
   border-radius: 0.25rem;
   padding: 0.45rem 0.65rem;
 }
-input {
+input, select, textarea {
   border: 1px solid #83978d;
   min-width: min(100%, 15rem);
   flex: 1;
@@ -84,8 +84,8 @@ button {
   cursor: pointer;
 }
 button:hover:not(:disabled) { background: #173f35; }
-button:disabled, input:disabled { opacity: 0.7; cursor: default; }
-input:focus-visible, button:focus-visible { outline: 3px solid #1d7366; outline-offset: 2px; }
+button:disabled, input:disabled, select:disabled, textarea:disabled { opacity: 0.7; cursor: default; }
+:is(input, button, select, textarea):focus-visible { outline: 3px solid #1d7366; outline-offset: 2px; }
 .project-result, form + p { margin-top: 0.7rem; }
 .project-result .facts { margin-top: 0.35rem; }
 code {
@@ -102,3 +102,26 @@ code {
 .providers p { margin-top: 0.22rem; font-size: 0.86rem; }
 .failure p, [role="alert"] { color: #85271c; }
 .failure button { margin-top: 0.6rem; }
+.project-list, .work-tree { margin: 0; padding: 0; list-style: none; }
+.project-list li, .work-tree li { padding: 0.65rem 0; border-top: 1px solid #d4ded7; }
+.project-list li .section-heading { margin-bottom: 0.25rem; }
+.project-list p, .work-tree span { font-size: 0.86rem; }
+.project-list li button { margin-top: 0.35rem; }
+.project-list + .field-row, .work-tree + .field-row { margin-bottom: 0.65rem; }
+.work-items { margin-top: 1.2rem; }
+.work-tree li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.35rem 0.75rem; }
+.work-tree :is(button, strong), .work-selection strong, .checkbox { overflow-wrap: anywhere; }
+.work-tree li:not([data-depth="0"]) { padding-left: 0.75rem; }
+.work-tree li[data-depth="2"] { padding-left: 1.5rem; }
+.work-tree li[data-depth="3"] { padding-left: 2.25rem; }
+.work-tree li:not([data-depth="0"], [data-depth="1"], [data-depth="2"], [data-depth="3"]) { padding-left: 3rem; }
+.work-tree button, .work-tree strong { max-width: 100%; text-align: left; }
+.work-selection { padding: 0.65rem; background: #f0f4ee; border-radius: 0.25rem; }
+.work-selection form { margin-top: 0.55rem; }
+.work-form h4 { margin: 0.8rem 0 0.35rem; }
+.work-form fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
+.work-form input:not([type="checkbox"]), .work-form textarea { width: 100%; }
+.work-form label:not(:first-child) { margin-top: 0.55rem; }
+.work-form textarea { min-height: 4.75rem; resize: vertical; }
+.work-form .checkbox input { min-width: 0; }
+.work-form button { display: block; margin-top: 0.55rem; }

@@ -4,7 +4,6 @@
 import os
 import sys
 from argparse import ArgumentParser
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from corinthos.bootstrap import _read_profile, _root, initialize
@@ -12,55 +11,13 @@ from corinthos.contracts import ContractError, ContractStore, IntegrityError
 from corinthos.contracts.artifacts import private_directory
 from corinthos.project_manager.navigation import Back, answer, choose, pick
 from corinthos.project_manager.presentation import render_fields, safe_text
-from corinthos.user_state import read_state, state_root, update_state
-
-_RECENT_FILE = "recent-projects.json"
-_EMPTY_RECENT = {"version": 1, "projects": []}
-_RECENT_LIMIT = 20
-
-
-def _recent_entries(document):
-    entries = document.get("projects")
-    if (
-        set(document) != {"version", "projects"}
-        or not isinstance(entries, list)
-        or len(entries) > _RECENT_LIMIT
-    ):
-        raise IntegrityError("The saved Recent projects list is invalid.")
-    seen = set()
-    for entry in entries:
-        try:
-            path, stamp = entry["path"], entry["last_opened_at"]
-            key = os.path.normcase(path)
-            if (
-                set(entry) != {"path", "last_opened_at"}
-                or not isinstance(path, str)
-                or "\0" in path
-                or not Path(path).is_absolute()
-                or os.path.normpath(path) != path
-                or datetime.fromisoformat(stamp).utcoffset() != timedelta(0)
-                or key in seen
-            ):
-                raise ValueError
-            seen.add(key)
-        except (KeyError, TypeError, ValueError):
-            raise IntegrityError("The saved Recent projects list is invalid.") from None
-    return entries
+from corinthos.project_registry import ProjectRegistryService
+from corinthos.user_state import read_state, state_root
 
 
 def _remember(root):
-    path = str(root)
-    key = os.path.normcase(path)
-    entry = {"path": path, "last_opened_at": datetime.now(UTC).isoformat()}
-
-    def update(document):
-        others = [
-            item for item in _recent_entries(document) if os.path.normcase(item["path"]) != key
-        ]
-        return {"version": 1, "projects": [entry, *others[: _RECENT_LIMIT - 1]]}
-
     try:
-        update_state(_RECENT_FILE, _EMPTY_RECENT, update)
+        ProjectRegistryService().remember(root)
     except (ContractError, OSError) as error:
         print("Could not update Recent projects. " + safe_text(error), file=sys.stderr)
 
@@ -189,12 +146,10 @@ def run_shell(parser: ArgumentParser, *, current: Path | None = None) -> int:
                     _project_menu(parser, operation(path))
                 elif action == "3":
                     print("\nRECENT PROJECTS")
-                    entries = _recent_entries(read_state(_RECENT_FILE, _EMPTY_RECENT))
-                    selected = pick(
-                        entries, lambda item: item["path"], "Open a recent project", save=False
-                    )
+                    paths = ProjectRegistryService().paths()
+                    selected = pick(paths, str, "Open a recent project", save=False)
                     if selected:
-                        _project_menu(parser, _open_project(selected["path"]))
+                        _project_menu(parser, _open_project(selected))
                 elif action == "4":
                     _provider_menu()
                 elif action == "5":

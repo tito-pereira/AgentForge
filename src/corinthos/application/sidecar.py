@@ -6,19 +6,58 @@ import sys
 from dataclasses import asdict
 from typing import BinaryIO, TextIO
 
-from corinthos.application import project_status, providers_status, version
+from corinthos.application import project_status, providers_status, version, workspace
 from corinthos.contracts import ContractError
 
-PROTOCOL_VERSION = 1
+BOOTSTRAP_PROTOCOL_VERSION = 1
+SUPPORTED_PROTOCOLS = (1, 2)
 MAX_FRAME_BYTES = 65_536
 _MAX_ID = 2**53 - 1
-_METHODS = (
+_V1_METHODS = (
     "system.handshake",
     "system.version",
     "project.status",
     "providers.status",
     "system.shutdown",
 )
+_PAGE_OPTIONS = ("limit", "offset")
+_WORK_CONTENT = (
+    "objective",
+    "acceptance_criteria",
+    "parent_work_item_id",
+    "validation_policy",
+    "affected_modules",
+    "depends_on",
+)
+_V2_OPERATIONS = {
+    "projects.list": (workspace.projects_list, (), _PAGE_OPTIONS),
+    "project.summary": (workspace.project_summary, ("root",), ()),
+    "project.open": (workspace.project_open, ("root",), ()),
+    "work.create": (
+        workspace.work_create,
+        ("root", "scope_level", "objective", "acceptance_criteria"),
+        (*_WORK_CONTENT[2:], "project_id"),
+    ),
+    "work.get": (workspace.work_get, ("root", "work_item_id"), ()),
+    "work.list": (workspace.work_list, ("root",), ("scope_level", "status", *_PAGE_OPTIONS)),
+    "work.update": (
+        workspace.work_update,
+        ("root", "work_item_id"),
+        (*_WORK_CONTENT, "expected_updated_at"),
+    ),
+    "work.status": (
+        workspace.work_status,
+        ("root", "work_item_id", "status"),
+        ("expected_updated_at",),
+    ),
+    "work.tree": (workspace.work_tree, ("root",), ("parent_work_item_id", *_PAGE_OPTIONS)),
+    "work.dependencies": (
+        workspace.work_dependencies,
+        ("root", "work_item_id"),
+        _PAGE_OPTIONS,
+    ),
+}
+_MUTATIONS = {"project.open", "work.create", "work.update", "work.status"}
 _ERROR_MESSAGES = {
     -32700: "Parse error",
     -32600: "Invalid Request",
@@ -86,26 +125,49 @@ def _params(message: dict, *, required=(), optional=()) -> dict:
     return params
 
 
-def _dispatch(message: dict, negotiated: bool) -> tuple[dict, bool, bool]:
+def _dispatch(message: dict, negotiated: int | None) -> tuple[dict, int | None, bool]:
     method = message["method"]
-    if method not in _METHODS:
-        raise _RpcError(-32601)
     if method == "system.handshake":
         received = _params(message, required=("protocol_version",))["protocol_version"]
         if type(received) is not int:
             raise _RpcError(-32602)
-        if received != PROTOCOL_VERSION:
+        if received not in SUPPORTED_PROTOCOLS or (
+            negotiated is not None and negotiated != received
+        ):
             raise _RpcError(-32001)
         return (
             {
-                "protocol_version": PROTOCOL_VERSION,
+                "protocol_version": received,
                 "version": version().version,
-                "methods": list(_METHODS),
+                "methods": [*_V1_METHODS, *_V2_OPERATIONS] if received == 2 else list(_V1_METHODS),
             },
-            "id" in message or negotiated,
+            received if "id" in message else negotiated,
             False,
         )
-    if not negotiated:
+    if method in _V2_OPERATIONS:
+        if negotiated is None:
+            raise _RpcError(-32001)
+        if negotiated != 2:
+            raise _RpcError(-32601)
+        if method in _MUTATIONS and "id" not in message:
+            raise _RpcError(-32600)
+        operation, required, optional = _V2_OPERATIONS[method]
+        params = _params(message, required=required, optional=optional)
+        if "root" in params and not isinstance(params["root"], str):
+            raise _RpcError(-32602)
+        from corinthos.work import WorkError
+
+        try:
+            return operation(**params), negotiated, False
+        except WorkError:
+            raise _RpcError(-32602) from None
+        except ContractError:
+            raise _RpcError(-32002) from None
+        except ValueError:
+            raise _RpcError(-32602) from None
+    if method not in _V1_METHODS:
+        raise _RpcError(-32601)
+    if negotiated is None:
         raise _RpcError(-32001)
     if method in {"project.status", "providers.status"}:
         params = (
@@ -139,9 +201,13 @@ def _error(code: int, request_id=None) -> dict:
     }
 
 
-def _write(output: BinaryIO, message: dict) -> None:
-    data = json.dumps(message, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
-    if len(data) > MAX_FRAME_BYTES:
+def _write(output: BinaryIO, message: dict, *, ascii_only: bool = True) -> None:
+    serialized = json.dumps(message, separators=(",", ":"), ensure_ascii=ascii_only)
+    try:
+        data = serialized.encode("utf-8")
+    except UnicodeEncodeError:
+        data = b""
+    if not data or len(data) > MAX_FRAME_BYTES:
         data = json.dumps(_error(-32002, message.get("id")), separators=(",", ":")).encode()
     output.write(data + b"\n")
     output.flush()
@@ -153,8 +219,9 @@ def _notify(output: BinaryIO, method: str, params: dict) -> None:
 
 def serve(source: BinaryIO, output: BinaryIO, diagnostics: TextIO) -> None:
     """Serve one local peer until EOF or an identified shutdown request."""
-    _notify(output, "system.ready", {"protocol_version": PROTOCOL_VERSION})
-    negotiated = False
+    # The frozen v1 ready event precedes explicit negotiation on every connection.
+    _notify(output, "system.ready", {"protocol_version": BOOTSTRAP_PROTOCOL_VERSION})
+    negotiated = None
     while frame := source.readline(MAX_FRAME_BYTES + 2):
         if len(frame) > MAX_FRAME_BYTES + 1 or not frame.endswith(b"\n"):
             _write(output, _error(-32600))
@@ -187,7 +254,7 @@ def serve(source: BinaryIO, output: BinaryIO, diagnostics: TextIO) -> None:
             reply = _error(-32603, message.get("id"))
             stopping = False
         if "id" in message:
-            _write(output, reply)
+            _write(output, reply, ascii_only=negotiated != 2)
         if stopping:
             _notify(output, "system.stopping", {})
             return

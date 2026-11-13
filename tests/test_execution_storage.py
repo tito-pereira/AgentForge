@@ -42,7 +42,7 @@ _TABLES_V4 = (
     "wf_workspace_leases",
     "wf_execution_events",
 )
-_SETUP = """
+_CONTRACT_SETUP = """
 # Synthetic trusted fixture authority, never production terminal consent.
 import json
 import sqlite3
@@ -63,6 +63,10 @@ for name in ('project', 'technology-decision', 'module', 'workflow', 'validation
     metadata = document['metadata']['provenance']
     store.publish(document, context=PublishContext(metadata['engine'], metadata['actor_id'],
                                                  lambda request, proof=proof: request == proof))
+"""
+_SETUP = (
+    _CONTRACT_SETUP
+    + """
 manager = ProjectManager(root)
 s = manager.start('A synthetic migration project.', actor_id='fixture-owner')
 for operation in (
@@ -95,6 +99,7 @@ s = planner.review(s['session_id'], s['version'], actor_id='fixture-owner')
 s = _record(planner,s,'fixture-owner',delegate=True)
 _publish(planner,s,'fixture-owner')
 """
+)
 _EXECUTE_V4 = """
 from corinthos.workflow.execution_repository import ExecutionRepository
 workflow = json.loads((examples/'workflow.json').read_text(encoding='utf-8'))
@@ -132,7 +137,7 @@ def _version(database):
         return connection.execute("PRAGMA user_version").fetchone()[0]
 
 
-def _historical_state(tmp_path, commit, version, extra_setup=""):
+def _historical_state(tmp_path, commit, version, extra_setup="", *, base_setup=_SETUP):
     repository = Path(__file__).resolve().parents[1]
     archive = subprocess.run(
         ["git", "archive", "--format=zip", commit, "src/corinthos"],
@@ -147,7 +152,13 @@ def _historical_state(tmp_path, commit, version, extra_setup=""):
     project.mkdir()
     environment = {**os.environ, "PYTHONPATH": str(old / "src"), "PYTHONUTF8": "1"}
     result = subprocess.run(
-        [sys.executable, "-B", "-c", _SETUP + extra_setup, str(repository / "examples/contracts")],
+        [
+            sys.executable,
+            "-B",
+            "-c",
+            base_setup + extra_setup,
+            str(repository / "examples/contracts"),
+        ],
         cwd=project,
         env=environment,
         text=True,
@@ -169,7 +180,7 @@ def test_actual_v3_upgrade_preserves_every_old_row_and_verified_backup(phase3_st
     before = _records(database)
     assert all(before[table] for table in _TABLES)
     store = ContractStore(phase3_state)
-    assert _version(database) == 6 and _records(database) == before
+    assert _version(database) == 7 and _records(database) == before
     (backup,) = database.parent.glob("state.pre-v4-*.db")
     assert _version(backup) == 3 and _records(backup) == before
     assert ProjectManager(phase3_state).list()[0]["state"] == "PUBLISHED"
@@ -205,7 +216,7 @@ def test_concurrent_v4_openers_create_one_verified_backup(phase3_state):
     before = _records(database)
     with ThreadPoolExecutor(max_workers=2) as pool:
         stores = list(pool.map(ContractStore, (phase3_state, phase3_state)))
-    assert len(stores) == 2 and _version(database) == 6 and _records(database) == before
+    assert len(stores) == 2 and _version(database) == 7 and _records(database) == before
     assert len(list(database.parent.glob("state.pre-v4-*.db"))) == 1
 
 
@@ -242,7 +253,7 @@ def test_populated_v4_rollback_and_upgrade_preserve_every_previous_record(tmp_pa
         ).fetchall()
 
     ContractStore(project)
-    assert _version(database) == 6 and _records(database, _TABLES_V4) == before
+    assert _version(database) == 7 and _records(database, _TABLES_V4) == before
     backups = list(database.parent.glob("state.pre-v5-*.db"))
     assert len(backups) == 2
     assert all(_version(item) == 4 and _records(item, _TABLES_V4) == before for item in backups)

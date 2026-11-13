@@ -75,6 +75,9 @@ def configure_parser(parser: argparse.ArgumentParser):
         else:
             action.add_argument("review_id")
         action.set_defaults(handler=run_product_review)
+    from corinthos.application.cli import configure_project_actions
+
+    configure_project_actions(actions)
     return commands
 
 

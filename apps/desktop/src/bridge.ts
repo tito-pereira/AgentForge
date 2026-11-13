@@ -27,6 +27,57 @@ export interface ProjectStatus {
   schema_version: number | null;
 }
 
+export interface ProjectEntry {
+  root: string;
+  display_name: string;
+  last_accessed_at: string | null;
+  availability: "AVAILABLE" | "MISSING" | "UNAVAILABLE";
+  initialized: boolean;
+  storage: ProjectStatus["storage"];
+  schema_version: number | null;
+}
+
+export interface ProjectSummary extends ProjectStatus {
+  display_name: string;
+  active_project: ContractReference | null;
+  active_workflow: ContractReference | null;
+  work_items: {
+    total: number;
+    by_status: Record<string, number>;
+    by_scope: Record<string, number>;
+  } | null;
+}
+
+interface ContractReference {
+  contract_id: string;
+  revision_id: string;
+}
+
+export interface WorkItem {
+  work_item_id: string;
+  parent_work_item_id: string | null;
+  objective: string;
+  scope_level: string;
+  status: string;
+  updated_at: string;
+  allowed_transitions: string[];
+}
+
+export interface WorkNode extends Omit<WorkItem, "updated_at" | "allowed_transitions"> {
+  depth: number;
+}
+
+interface WorkInput {
+  objective: string;
+  scope_level: string;
+  acceptance_criteria: string[];
+  parent_work_item_id?: string;
+}
+
+function request<T>(method: string, params: object) {
+  return invoke<T>("workspace_request", { method, params });
+}
+
 export type BackendSnapshot =
   | {
       connection: "ready";
@@ -37,7 +88,21 @@ export type BackendSnapshot =
 
 export const bridge = {
   snapshot: () => invoke<BackendSnapshot>("backend_snapshot"),
-  project: (root: string) => invoke<ProjectStatus>("project_status", { root }),
+  projects: (offset: number) =>
+    request<{ projects: ProjectEntry[]; next_offset: number | null }>("projects.list", { offset }),
+  project: (root: string, open: boolean) =>
+    request<ProjectSummary>(open ? "project.open" : "project.summary", { root }),
+  workTree: (root: string, offset: number) =>
+    request<{ nodes: WorkNode[]; next_offset: number | null }>("work.tree", { root, offset }),
+  workGet: (root: string, work_item_id: string) => request<WorkItem>("work.get", { root, work_item_id }),
+  workCreate: (root: string, input: WorkInput) => request<WorkItem>("work.create", { root, ...input }),
+  workStatus: (root: string, item: WorkItem, status: string) =>
+    request<WorkItem>("work.status", {
+      root,
+      work_item_id: item.work_item_id,
+      expected_updated_at: item.updated_at,
+      status,
+    }),
   restart: () => invoke<BackendSnapshot>("restart_backend"),
   onDisconnect: (handler: () => void) =>
     listen<{ method: string }>("backend-lifecycle", ({ payload }) => {

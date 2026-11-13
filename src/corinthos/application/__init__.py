@@ -3,34 +3,24 @@
 
 import os
 import re
-import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from corinthos import __version__
-from corinthos.bootstrap import _read_profile, _root, show_adapters
-from corinthos.contracts import ConflictError, ContractError, ContractStore
-from corinthos.contracts.artifacts import is_link, private_directory
+from corinthos.bootstrap import show_adapters
+from corinthos.contracts import ContractError
+from corinthos.project_status import MAX_ROOT_CHARS, _absolute_root, _inspect_path
+from corinthos.project_status import ProjectStatus as ProjectStatus
+from corinthos.project_status import project_status as project_status
 from corinthos.providers import show_providers
 
-MAX_ROOT_CHARS = 4096
 _VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?")
 
 
 @dataclass(frozen=True)
 class VersionInfo:
     version: str
-
-
-@dataclass(frozen=True)
-class ProjectStatus:
-    root: str
-    exists: bool
-    is_directory: bool
-    initialized: bool
-    storage: Literal["ABSENT", "CURRENT", "LEGACY", "INVALID", "UNVERIFIED"]
-    schema_version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -55,76 +45,6 @@ class ProviderStatus:
 
 def version() -> VersionInfo:
     return VersionInfo(__version__)
-
-
-def _absolute_root(value: str | Path) -> Path:
-    raw = os.fspath(value)
-    if (
-        not isinstance(raw, str)
-        or not 0 < len(raw) <= MAX_ROOT_CHARS
-        or "\x00" in raw
-        or any("\ud800" <= char <= "\udfff" for char in raw)
-    ):
-        raise ValueError("Invalid project root.")
-    path = Path(raw)
-    if os.name == "nt" and (
-        path.anchor.startswith("\\\\")
-        or (path.anchor and not path.is_absolute())
-        or any(":" in part for part in path.parts[bool(path.anchor) :])
-    ):
-        raise ValueError("Invalid project root.")
-    absolute = path if path.is_absolute() else Path.cwd() / path
-    if len(str(absolute)) > MAX_ROOT_CHARS or (
-        os.name == "nt" and absolute.anchor.startswith("\\\\")
-    ):
-        raise ValueError("Invalid project root.")
-    return absolute
-
-
-def _inspect_path(path: Path) -> tuple[Path, bool, bool]:
-    if path == path.parent:
-        candidate = path
-    else:
-        parent = _root(path.parent, missing_ok=True)
-        if parent is None:
-            return path, False, False
-        candidate = parent / path.name
-    try:
-        info = candidate.lstat()
-    except (FileNotFoundError, NotADirectoryError):
-        return candidate, False, False
-    if is_link(info):
-        raise ValueError("Project status requires an unredirected path.")
-    return candidate, True, stat.S_ISDIR(info.st_mode)
-
-
-def project_status(root: str | Path) -> ProjectStatus:
-    """Inspect one explicitly supplied path without opening a writable store."""
-    path = _absolute_root(root)
-    path, exists, is_directory = _inspect_path(path)
-    name = str(path)
-    if not is_directory:
-        return ProjectStatus(name, exists, False, False, "ABSENT")
-
-    initialized = False
-    try:
-        safe_root = _root(path)
-        name = str(safe_root)
-        legacy = os.path.lexists(safe_root / ".nukytera")
-        if not os.path.lexists(safe_root / ".corinthos"):
-            return ProjectStatus(name, True, True, False, "LEGACY" if legacy else "ABSENT")
-        private = private_directory(safe_root)
-        initialized = _read_profile(private / "bootstrap.json") is not None and not legacy
-        schema = ContractStore.inspect_existing(safe_root)
-        if schema is None:
-            return ProjectStatus(name, True, True, initialized, "LEGACY" if legacy else "ABSENT")
-    except ConflictError:
-        return ProjectStatus(name, True, True, initialized, "UNVERIFIED")
-    except (ContractError, OSError, RuntimeError):
-        return ProjectStatus(name, True, True, False, "INVALID")
-
-    storage = "CURRENT" if schema == ContractStore.current_schema_version() else "LEGACY"
-    return ProjectStatus(name, True, True, True, storage, schema)
 
 
 def _known_capabilities(row: dict, executable: str | None) -> KnownCapabilities | None:

@@ -113,7 +113,7 @@ def test_long_lived_sidecar_preserves_wire_ids_events_and_read_only_state(
 def test_sidecar_recovers_from_invalid_messages_and_incompatible_handshake(validate_wire):
     first = _frames(
         _request("system.version", 1),
-        _request("system.handshake", 2, protocol_version=2),
+        _request("system.handshake", 2, protocol_version=99),
     )
     invalid = (
         b'{"jsonrpc":"2.0","method":"system.version","id":NaN}\n'

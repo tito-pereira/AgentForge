@@ -18,8 +18,10 @@ use std::time::{Duration, Instant};
 const MAX_FRAME_BYTES: usize = 65_536;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(8);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const PROJECT_OPEN_TIMEOUT: Duration = Duration::from_secs(15);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
-const METHODS: [&str; 5] = [
+const PROTOCOL_VERSION: u32 = 2;
+const CORE_METHODS: [&str; 5] = [
     "system.handshake",
     "system.version",
     "project.status",
@@ -30,11 +32,16 @@ type Result<T> = std::result::Result<T, &'static str>;
 pub type EventSink = Arc<dyn Fn(LifecycleEvent) + Send + Sync>;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct Handshake {
     pub protocol_version: u32,
     pub version: String,
     pub methods: Vec<String>,
+}
+
+impl Handshake {
+    pub fn supports(&self, method: &str) -> bool {
+        self.methods.iter().any(|value| value == method)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -137,27 +144,24 @@ impl Sidecar {
             .map_err(|_| "Could not start the sidecar reader.")?;
 
         let deadline = Instant::now() + timeout;
-        client.send("system.handshake", json!({"protocol_version": 1}))?;
+        client.send(
+            "system.handshake",
+            json!({"protocol_version": PROTOCOL_VERSION}),
+        )?;
         let Ok(Message::Ready) = client.receive(deadline) else {
-            return Err("The Corinthos sidecar did not announce protocol v1.");
+            return Err("The Corinthos sidecar did not announce ready.");
         };
         let handshake: Handshake = serde_json::from_value(client.receive_response(1, deadline)?)
             .map_err(|_| "Invalid Corinthos sidecar handshake.")?;
-        if handshake.protocol_version != 1
+        if handshake.protocol_version != PROTOCOL_VERSION
             || handshake.version.is_empty()
-            || handshake.methods.len() != METHODS.len()
-            || !METHODS.iter().all(|method| {
-                handshake
-                    .methods
-                    .iter()
-                    .any(|value| value.as_str() == *method)
-            })
+            || !CORE_METHODS.iter().all(|method| handshake.supports(method))
         {
-            return Err("The Corinthos sidecar does not support protocol v1.");
+            return Err("The Corinthos sidecar does not support protocol v2.");
         }
         events(LifecycleEvent {
             method: "system.ready",
-            params: json!({"protocol_version": 1}),
+            params: json!({"protocol_version": PROTOCOL_VERSION}),
         });
         Ok((client, handshake))
     }
@@ -196,14 +200,19 @@ impl Sidecar {
         self.terminate()
     }
 
-    fn request(&mut self, method: &'static str, params: Value) -> Result<Value> {
+    pub fn request(&mut self, method: &str, params: Value) -> Result<Value> {
         let id = self
             .send(method, params)
             .or_else(|error| self.fail(error))?;
-        self.receive_response(id, Instant::now() + REQUEST_TIMEOUT)
+        let timeout = if method == "project.open" {
+            PROJECT_OPEN_TIMEOUT
+        } else {
+            REQUEST_TIMEOUT
+        };
+        self.receive_response(id, Instant::now() + timeout)
     }
 
-    fn send(&mut self, method: &'static str, params: Value) -> Result<u64> {
+    fn send(&mut self, method: &str, params: Value) -> Result<u64> {
         let id = self.next_id;
         let mut frame = serde_json::to_vec(&json!({
             "jsonrpc": "2.0", "id": id, "method": method, "params": params,
@@ -309,6 +318,7 @@ fn decode(frame: &[u8]) -> Result<Wire> {
         }
     }
     match object.get("method").and_then(Value::as_str) {
+        // The unnegotiated bootstrap announcement retains the Phase 1 shape.
         Some("system.ready") if object.get("params") == Some(&json!({"protocol_version": 1})) => {
             Ok(Wire::Ready)
         }

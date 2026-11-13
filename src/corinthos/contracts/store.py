@@ -28,7 +28,7 @@ from .schema import validate_schema
 from .semantics import validate_semantics
 
 _APPLICATION_ID = 0x4E554B59
-_SCHEMA_VERSION = 6
+_SCHEMA_VERSION = 7
 _LOCK_TIMEOUT = 5.0
 _BUSY_CODES = {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
 _ACTIVE_TYPES = frozenset({"PROJECT", "WORKFLOW", "MODULE", "TECHNOLOGY_DECISION", "VALIDATION"})
@@ -475,7 +475,63 @@ _REQUIRED_TABLES_V5 = _REQUIRED_TABLES_V4 | {
     "val_runs",
     "val_events",
 }
-_REQUIRED_TABLES = _REQUIRED_TABLES_V5 | {"lc_records", "lc_projects", "lc_events"}
+_MIGRATION_V7 = (
+    """CREATE TABLE work_items (
+        work_item_id TEXT PRIMARY KEY NOT NULL CHECK (length(work_item_id) = 37),
+        project_id TEXT NOT NULL CHECK (length(project_id) BETWEEN 1 AND 128),
+        parent_work_item_id TEXT CHECK (length(parent_work_item_id) = 37),
+        scope_level TEXT NOT NULL CHECK (scope_level IN ('TASK', 'CHANGE', 'PROJECT', 'CRITICAL')),
+        objective TEXT NOT NULL CHECK (length(objective) BETWEEN 1 AND 600),
+        acceptance_criteria TEXT NOT NULL CHECK (length(acceptance_criteria) BETWEEN 1 AND 32768),
+        status TEXT NOT NULL CHECK (status IN ('OPEN', 'ACTIVE', 'BLOCKED', 'COMPLETED', 'CANCELLED')),
+        validation_policy TEXT NOT NULL CHECK (length(validation_policy) BETWEEN 1 AND 64),
+        creator_id TEXT NOT NULL CHECK (length(creator_id) BETWEEN 1 AND 128),
+        created_at TEXT NOT NULL CHECK (length(created_at) = 32),
+        updated_at TEXT NOT NULL CHECK (length(updated_at) = 32),
+        completed_at TEXT CHECK (length(completed_at) = 32),
+        CHECK (parent_work_item_id IS NULL OR parent_work_item_id <> work_item_id),
+        CHECK ((status IN ('COMPLETED', 'CANCELLED')) = (completed_at IS NOT NULL)),
+        UNIQUE (project_id, work_item_id),
+        FOREIGN KEY (project_id, parent_work_item_id) REFERENCES work_items (project_id, work_item_id)
+    )""",
+    """CREATE INDEX work_items_parent
+       ON work_items (parent_work_item_id, created_at, work_item_id)""",
+    """CREATE INDEX work_items_order
+       ON work_items (created_at, work_item_id)""",
+    """CREATE TABLE work_item_dependencies (
+        project_id TEXT NOT NULL,
+        work_item_id TEXT NOT NULL,
+        dependency_id TEXT NOT NULL,
+        PRIMARY KEY (work_item_id, dependency_id),
+        CHECK (work_item_id <> dependency_id),
+        FOREIGN KEY (project_id, work_item_id) REFERENCES work_items (project_id, work_item_id),
+        FOREIGN KEY (project_id, dependency_id) REFERENCES work_items (project_id, work_item_id)
+    )""",
+    """CREATE TABLE work_item_modules (
+        project_id TEXT NOT NULL,
+        work_item_id TEXT NOT NULL,
+        module_id TEXT NOT NULL CHECK (length(module_id) BETWEEN 1 AND 128),
+        module_contract_id TEXT CHECK (length(module_contract_id) BETWEEN 1 AND 128),
+        module_revision_id TEXT CHECK (length(module_revision_id) BETWEEN 1 AND 128),
+        PRIMARY KEY (work_item_id, module_id),
+        CHECK ((module_contract_id IS NULL) = (module_revision_id IS NULL)),
+        FOREIGN KEY (project_id, work_item_id) REFERENCES work_items (project_id, work_item_id),
+        FOREIGN KEY (module_contract_id, module_revision_id)
+            REFERENCES revisions (contract_id, revision_id)
+    )""",
+    """CREATE TRIGGER work_items_no_delete BEFORE DELETE ON work_items
+       BEGIN SELECT RAISE(ABORT, 'Work Items are retained'); END""",
+    """CREATE TRIGGER work_items_no_replace BEFORE INSERT ON work_items
+       WHEN EXISTS (SELECT 1 FROM work_items WHERE work_item_id = NEW.work_item_id)
+       BEGIN SELECT RAISE(ABORT, 'Work Item identities are immutable'); END""",
+)
+_SUPPORTED_VERSIONS = range(1, _SCHEMA_VERSION + 1)
+_REQUIRED_TABLES_V6 = _REQUIRED_TABLES_V5 | {"lc_records", "lc_projects", "lc_events"}
+_REQUIRED_TABLES = _REQUIRED_TABLES_V6 | {
+    "work_items",
+    "work_item_dependencies",
+    "work_item_modules",
+}
 _REVISIONS = """SELECT revisions.*, contracts.contract_type, contracts.project_id,
                 contracts.active_revision_id
                 FROM revisions JOIN contracts USING (contract_id)"""
@@ -494,7 +550,7 @@ def _markers(connection: sqlite3.Connection) -> tuple[int, int]:
 
 def _verify_database(connection: sqlite3.Connection, version: int) -> None:
     """Check a supported schema without upgrading or rewriting its records."""
-    if version not in (1, 2, 3, 4, 5, _SCHEMA_VERSION) or _markers(connection) != (
+    if version not in _SUPPORTED_VERSIONS or _markers(connection) != (
         _APPLICATION_ID,
         version,
     ):
@@ -508,14 +564,36 @@ def _verify_database(connection: sqlite3.Connection, version: int) -> None:
         3: _REQUIRED_TABLES_V3,
         4: _REQUIRED_TABLES_V4,
         5: _REQUIRED_TABLES_V5,
-        6: _REQUIRED_TABLES,
+        6: _REQUIRED_TABLES_V6,
+        7: _REQUIRED_TABLES,
     }[version]
     if not required <= tables:
         raise StoreError("The state database schema is incomplete.")
+    if version == _SCHEMA_VERSION:
+        _verify_migration_schema(connection, version)
     if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
         raise StoreError("The state database failed its integrity check.")
     if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
         raise StoreError("The state database failed its foreign-key integrity check.")
+
+
+def _verify_migration_schema(connection: sqlite3.Connection, version: int) -> None:
+    """Verify the original definitions survive before and after the v7 migration."""
+    actual = {
+        row[0] for row in connection.execute("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL")
+    }
+    expected = {
+        *_MIGRATION_V1,
+        *_MIGRATION_V2,
+        *_MIGRATION_V3,
+        *_MIGRATION_V4,
+        *_MIGRATION_V5,
+        *_MIGRATION_V6,
+    }
+    if version == 7:
+        expected.update(_MIGRATION_V7)
+    if not expected <= actual:
+        raise StoreError("The state database has missing or altered schema definitions.")
 
 
 def _stored_document(row: sqlite3.Row) -> dict:
@@ -600,8 +678,17 @@ class ContractStore:
             raise StoreError("Cannot read the existing project database.") from None
 
     @staticmethod
-    def inspect_existing(project_root: Path) -> int | None:
+    def inspect_existing(project_root: Path, *, timeout: float = 2) -> int | None:
         """Return a verified schema version without writing SQLite sidecars."""
+        with ContractStore.inspect_snapshot(project_root, timeout=timeout) as (_, version):
+            return version
+
+    @staticmethod
+    @contextmanager
+    def inspect_snapshot(
+        project_root: Path, *, timeout: float = 2
+    ) -> Iterator[tuple[sqlite3.Connection | None, int | None]]:
+        """Read a verified snapshot without creating state, migrating, or writing sidecars."""
         database = private_directory(project_root) / "state.db"
         sidecars = [
             database.with_name(database.name + suffix) for suffix in ("-journal", "-wal", "-shm")
@@ -620,8 +707,11 @@ class ContractStore:
         try:
             before = fingerprint()
             if before is None:
-                return None
-            deadline = monotonic() + 2
+                yield None, None
+                if fingerprint() is not None:
+                    raise ConflictError("The database changed during status inspection.")
+                return
+            deadline = monotonic() + timeout
             # An immutable read cannot create WAL/shared-memory files. Refuse
             # active sidecars and verify that the database stayed unchanged.
             with closing(
@@ -632,14 +722,15 @@ class ContractStore:
                     autocommit=True,
                 )
             ) as connection:
+                connection.row_factory = sqlite3.Row
                 connection.set_progress_handler(lambda: monotonic() >= deadline, 1000)
                 connection.execute("PRAGMA trusted_schema = OFF")
                 connection.execute("PRAGMA foreign_keys = ON")
                 _, version = _markers(connection)
                 _verify_database(connection, version)
+                yield connection, version
             if fingerprint() != before:
                 raise ConflictError("The database changed during status inspection.")
-            return version
         except sqlite3.Error as error:
             if getattr(error, "sqlite_errorcode", 0) & 255 == sqlite3.SQLITE_INTERRUPT:
                 raise ConflictError("The database status inspection timed out.") from None
@@ -650,6 +741,26 @@ class ContractStore:
     @staticmethod
     def current_schema_version() -> int:
         return _SCHEMA_VERSION
+
+    @staticmethod
+    def active_references(
+        connection: sqlite3.Connection, project_id: str | None, contract_type: str, *, limit: int
+    ) -> list[ContractRef]:
+        """Project active identities without reading unbounded contract payloads."""
+        query = (
+            "SELECT contract_id, active_revision_id, project_id FROM contracts "
+            "WHERE contract_type = ? AND active_revision_id IS NOT NULL"
+        )
+        parameters = (contract_type,)
+        if project_id is not None:
+            query += " AND project_id = ?"
+            parameters += (project_id,)
+        return [
+            ContractRef(row[0], row[1], contract_type, row[2])
+            for row in connection.execute(
+                query + " ORDER BY contract_id LIMIT ?", (*parameters, limit)
+            )
+        ]
 
     @contextmanager
     def _connection(self, *, create: bool = False) -> Iterator[sqlite3.Connection]:
@@ -705,10 +816,12 @@ class ContractStore:
 
     def _migrate(self, connection: sqlite3.Connection) -> None:
         application, version = _markers(connection)
-        if application == _APPLICATION_ID and version in (1, 2, 3, 4, 5, _SCHEMA_VERSION):
+        if application == _APPLICATION_ID and version in _SUPPORTED_VERSIONS:
             _verify_database(connection, version)
             if version == _SCHEMA_VERSION:
                 return
+            if version == 6:
+                _verify_migration_schema(connection, version)
             if not self.database_path.stat().st_mode & stat.S_IWUSR:
                 raise StoreError("The state database is read-only.")
             # The write reservation prevents another constructor or publisher
@@ -743,6 +856,9 @@ class ContractStore:
                 connection.execute(statement)
         if version < 6:
             for statement in _MIGRATION_V6:
+                connection.execute(statement)
+        if version < 7:
+            for statement in _MIGRATION_V7:
                 connection.execute(statement)
         connection.execute(f"PRAGMA application_id = {_APPLICATION_ID}")
         connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
@@ -1000,6 +1116,8 @@ class ContractStore:
                     destination.execute("PRAGMA foreign_keys = ON")
                     source.backup(destination, pages=128, progress=check_progress, sleep=0.05)
                     _verify_database(destination, version)
+                    if version == 6:
+                        _verify_migration_schema(destination, version)
                 _check_database_files(backup_path, allow_existing=False)
                 try:
                     # Both operations fail when the destination already exists.
