@@ -599,6 +599,58 @@ class ContractStore:
         except (OSError, sqlite3.Error):
             raise StoreError("Cannot read the existing project database.") from None
 
+    @staticmethod
+    def inspect_existing(project_root: Path) -> int | None:
+        """Return a verified schema version without writing SQLite sidecars."""
+        database = private_directory(project_root) / "state.db"
+        sidecars = [
+            database.with_name(database.name + suffix) for suffix in ("-journal", "-wal", "-shm")
+        ]
+
+        def fingerprint():
+            _check_database_files(database)
+            if any(os.path.lexists(path) for path in sidecars):
+                raise ConflictError("The database has an active journal or WAL.")
+            try:
+                info = database.lstat()
+            except FileNotFoundError:
+                return None
+            return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+
+        try:
+            before = fingerprint()
+            if before is None:
+                return None
+            deadline = monotonic() + 2
+            # An immutable read cannot create WAL/shared-memory files. Refuse
+            # active sidecars and verify that the database stayed unchanged.
+            with closing(
+                sqlite3.connect(
+                    f"{database.as_uri()}?mode=ro&immutable=1",
+                    uri=True,
+                    timeout=0,
+                    autocommit=True,
+                )
+            ) as connection:
+                connection.set_progress_handler(lambda: monotonic() >= deadline, 1000)
+                connection.execute("PRAGMA trusted_schema = OFF")
+                connection.execute("PRAGMA foreign_keys = ON")
+                _, version = _markers(connection)
+                _verify_database(connection, version)
+            if fingerprint() != before:
+                raise ConflictError("The database changed during status inspection.")
+            return version
+        except sqlite3.Error as error:
+            if getattr(error, "sqlite_errorcode", 0) & 255 == sqlite3.SQLITE_INTERRUPT:
+                raise ConflictError("The database status inspection timed out.") from None
+            raise StoreError("Cannot read the existing project database.") from None
+        except OSError:
+            raise StoreError("Cannot read the existing project database.") from None
+
+    @staticmethod
+    def current_schema_version() -> int:
+        return _SCHEMA_VERSION
+
     @contextmanager
     def _connection(self, *, create: bool = False) -> Iterator[sqlite3.Connection]:
         try:

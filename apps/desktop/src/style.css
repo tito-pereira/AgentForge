@@ -1,0 +1,104 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+:root {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #1b2e2a;
+  background: #f0f4ee;
+  line-height: 1.5;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+main {
+  width: min(100% - 2rem, 52rem);
+  margin: 2rem auto;
+  padding-bottom: 1rem;
+}
+header, section {
+  border: 1px solid #c5d1c9;
+  background: #fff;
+  border-radius: 0.5rem;
+  padding: 1.15rem 1.4rem;
+}
+section { margin-top: 0.8rem; }
+h1, h2, h3, p, dl { margin: 0; }
+h1 { font-size: 1.85rem; line-height: 1.12; }
+h2 { font-size: 1.05rem; }
+h3 { font-size: 0.95rem; }
+p { color: #3d554e; }
+.masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: #183c35;
+  border-color: #183c35;
+  color: #fff;
+}
+.masthead p { color: #dcece3; margin-top: 0.25rem; }
+.connection {
+  background: #e2eae6;
+  color: #294940;
+  font-size: 0.85rem;
+  font-weight: 650;
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.25rem;
+}
+.connection.ready { background: #d8f3e6; color: #164635; }
+.connection.disconnected { background: #ffdfda; color: #701b13; }
+.section-heading, .provider-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+}
+.section-heading { margin-bottom: 0.65rem; }
+.section-heading span, .provider-heading span { color: #3d554e; font-size: 0.83rem; }
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2rem;
+}
+.facts dt { font-size: 0.82rem; color: #3d554e; }
+.facts dd { margin: 0; font-weight: 650; }
+label { display: block; margin-bottom: 0.3rem; font-size: 0.88rem; font-weight: 650; }
+.field-row { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+input, button {
+  font: inherit;
+  border-radius: 0.25rem;
+  padding: 0.45rem 0.65rem;
+}
+input {
+  border: 1px solid #83978d;
+  min-width: min(100%, 15rem);
+  flex: 1;
+  background: #fff;
+  color: inherit;
+}
+button {
+  border: 1px solid #22584b;
+  background: #22584b;
+  color: #fff;
+  font-weight: 650;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background: #173f35; }
+button:disabled, input:disabled { opacity: 0.7; cursor: default; }
+input:focus-visible, button:focus-visible { outline: 3px solid #1d7366; outline-offset: 2px; }
+.project-result, form + p { margin-top: 0.7rem; }
+.project-result .facts { margin-top: 0.35rem; }
+code {
+  display: block;
+  font-size: 0.83rem;
+  overflow-wrap: anywhere;
+}
+.providers {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.providers li { padding: 0.65rem 0; border-top: 1px solid #d4ded7; }
+.providers p { margin-top: 0.22rem; font-size: 0.86rem; }
+.failure p, [role="alert"] { color: #85271c; }
+.failure button { margin-top: 0.6rem; }
