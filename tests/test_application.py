@@ -7,6 +7,7 @@ import sqlite3
 from contextlib import closing
 
 import pytest
+from test_execution_storage import _historical_state
 
 from corinthos import __version__
 from corinthos.adapters.service import AdapterManager
@@ -49,16 +50,18 @@ def test_project_status_is_read_only_for_missing_ordinary_and_bootstrap(tmp_path
     assert not (root / ".corinthos/state.db").exists()
 
 
-@pytest.mark.parametrize("marker", [1, 6, 7, None])
+@pytest.mark.parametrize("marker", [1, 6, 7, 8, None])
 def test_project_status_checks_existing_storage_without_creating_or_migrating(tmp_path, marker):
-    private = tmp_path / ".corinthos"
-    private.mkdir()
-    database = private / "state.db"
     if marker == 6:
+        tmp_path = _historical_state(tmp_path, "5a2a8e682b1389d96318feb636b8f52828f943d3", 6)
+    private = tmp_path / ".corinthos"
+    private.mkdir(exist_ok=True)
+    database = private / "state.db"
+    if marker == 7:
         ContractStore(tmp_path)
     elif marker is None:
         database.write_bytes(b"not SQLite")
-    else:
+    elif marker != 6:
         with closing(sqlite3.connect(database)) as connection:
             for statement in storage._MIGRATION_V1:
                 connection.execute(statement)
@@ -68,10 +71,10 @@ def test_project_status_checks_existing_storage_without_creating_or_migrating(tm
     before = _snapshot(tmp_path)
     result = project_status(tmp_path)
     assert result.is_directory
-    if marker in {1, 6}:
+    if marker in {1, 6, 7}:
         assert (result.initialized, result.storage, result.schema_version) == (
             True,
-            "CURRENT" if marker == 6 else "LEGACY",
+            "CURRENT" if marker == 7 else "LEGACY",
             marker,
         )
     else:
@@ -81,7 +84,7 @@ def test_project_status_checks_existing_storage_without_creating_or_migrating(tm
             None,
         )
     assert _snapshot(tmp_path) == before
-    assert list(private.iterdir()) == [database]
+    assert not list(private.glob("state.pre-v*.db"))
 
 
 def test_project_status_does_not_touch_active_journal_or_wal(tmp_path):

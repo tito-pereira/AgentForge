@@ -19,7 +19,7 @@ from .schema import validate_schema
 from .store import (
     _APPLICATION_ID,
     _REVISIONS,
-    _SCHEMA_VERSION,
+    _SUPPORTED_VERSIONS,
     _markers,
     _stored_document,
     _verify_database,
@@ -170,7 +170,7 @@ def migrate_legacy_state(project_root: str | Path) -> bool:
             connection.execute("BEGIN EXCLUSIVE")
             _check_database(database)
             application, version = _markers(connection)
-            if application != _APPLICATION_ID or version not in (1, 2, 3, 4, 5, _SCHEMA_VERSION):
+            if application != _APPLICATION_ID or version not in _SUPPORTED_VERSIONS:
                 raise StoreError(
                     "The legacy state database application or schema version is unsupported."
                 )

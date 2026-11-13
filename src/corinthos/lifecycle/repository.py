@@ -4,6 +4,7 @@
 import json
 import re
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from uuid import uuid4
@@ -17,6 +18,15 @@ _STATE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
 _MAX_JSON = 4 * 1024 * 1024
 _MAX_EVENT_JSON = 8 * 1024 * 1024
 _MAX_ROWS = 20_000
+
+
+@dataclass(frozen=True)
+class LifecycleSummary:
+    tracker_id: str
+    enabled: bool
+    active_build_id: str | None
+    pending_build_id: str | None
+    version: int
 
 
 def now():
@@ -104,6 +114,27 @@ class LifecycleRepository:
         else:
             with self.store._connection() as connection:
                 yield connection
+
+    @staticmethod
+    def project_summary(connection, project_id) -> LifecycleSummary | None:
+        """Read the existing tracker and its exact build identities."""
+        row = connection.execute(
+            "SELECT tracker_id, enabled, active_build_id, pending_build_id, version "
+            "FROM lc_projects WHERE project_id = ?",
+            (identifier(project_id),),
+        ).fetchone()
+        if row is None:
+            return None
+        tracker, enabled, active, pending, version = row
+        if enabled not in {0, 1} or type(version) is not int or version < 1:
+            raise IntegrityError("The stored lifecycle tracker has inconsistent metadata.")
+        return LifecycleSummary(
+            identifier(tracker),
+            bool(enabled),
+            identifier(active) if active is not None else None,
+            identifier(pending) if pending is not None else None,
+            version,
+        )
 
     def find(self, kind, record_id, *, connection=None):
         with self._use(connection) as conn:

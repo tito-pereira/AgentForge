@@ -56,7 +56,9 @@ pub fn with_probe<'a, R: Runtime, M: tauri::Manager<R>>(
             let outcome = match title.as_str() {
                 "Corinthos desktop smoke: pass" => "pass\n",
                 "Corinthos desktop smoke: fail [backend]" => "fail [backend]\n",
+                "Corinthos desktop smoke: fail [registry]" => "fail [registry]\n",
                 "Corinthos desktop smoke: fail [project]" => "fail [project]\n",
+                "Corinthos desktop smoke: fail [work]" => "fail [work]\n",
                 "Corinthos desktop smoke: fail [unexpected]" => "fail [unexpected]\n",
                 _ => return,
             };

@@ -8,6 +8,16 @@ use std::sync::{
 };
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewWindowBuilder};
 
+const WORKSPACE_METHODS: [&str; 7] = [
+    "projects.list",
+    "project.summary",
+    "project.open",
+    "work.tree",
+    "work.get",
+    "work.create",
+    "work.status",
+];
+
 #[derive(Default)]
 struct Backend {
     process: Option<(Sidecar, Handshake)>,
@@ -112,10 +122,14 @@ async fn restart_backend(
 }
 
 #[tauri::command]
-async fn project_status(
-    root: String,
+async fn workspace_request(
+    method: String,
+    params: Value,
     state: State<'_, DesktopState>,
 ) -> Result<Value, &'static str> {
+    if !WORKSPACE_METHODS.contains(&method.as_str()) || !params.is_object() {
+        return Err("That workspace operation is unavailable.");
+    }
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut backend = state
@@ -125,12 +139,14 @@ async fn project_status(
         if backend.closing {
             return Err("The Corinthos desktop is closing.");
         }
-        backend
+        let (sidecar, handshake) = backend
             .process
             .as_mut()
-            .ok_or("The Corinthos sidecar is disconnected.")?
-            .0
-            .project_status(&root)
+            .ok_or("The Corinthos sidecar is disconnected.")?;
+        if !handshake.supports(&method) {
+            return Err("That workspace operation is unavailable.");
+        }
+        sidecar.request(&method, params)
     })
     .await
     .map_err(|_| "The sidecar bridge could not complete the request.")?
@@ -148,7 +164,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             backend_snapshot,
-            project_status,
+            workspace_request,
             restart_backend,
         ])
         .build(tauri::generate_context!())

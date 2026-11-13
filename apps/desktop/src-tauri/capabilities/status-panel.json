@@ -1,12 +1,12 @@
 {
   "identifier": "status-panel",
-  "description": "Read-only status and owned sidecar lifecycle for the local status panel.",
+  "description": "Local project navigation, Work Item operations and owned sidecar lifecycle.",
   "windows": [
     "main"
   ],
   "permissions": [
     "allow-backend-snapshot",
-    "allow-project-status",
+    "allow-workspace-request",
     "allow-restart-backend",
     "core:event:allow-listen",
     "core:event:allow-unlisten"

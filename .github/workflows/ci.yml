@@ -106,6 +106,11 @@ jobs:
         run: |
           ${{ matrix.python }} -m corinthos project --help
           ${{ matrix.python }} -m corinthos project start --help
+      - name: Verify Phase 2 CLI commands
+        run: |
+          ${{ matrix.python }} -m corinthos project summary --help
+          ${{ matrix.python }} -m corinthos projects list --help
+          ${{ matrix.python }} -m corinthos work create --help
       - name: Verify Workflow commands
         run: |
           ${{ matrix.python }} -m corinthos workflow --help
@@ -174,7 +179,7 @@ jobs:
         shell: powershell
         run: .\platform\windows\test-install.ps1
   desktop:
-    name: Verify Windows desktop spike
+    name: Verify Windows desktop Home and Projects
     runs-on: windows-latest
     timeout-minutes: 35
     defaults:
@@ -187,6 +192,8 @@ jobs:
           persist-credentials: false
       - name: Record tested commit
         run: git rev-parse HEAD
+      - name: Fetch exact v6 desktop fixture sources
+        run: git fetch --no-tags origin 377bbcb9f842a6472e393465119e3467dd9cb65f
       - uses: actions/setup-node@v7
         with:
           node-version: '24.22.2'
@@ -219,6 +226,6 @@ jobs:
           cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --no-default-features
       - name: Build the WebView test observer
         run: cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --release --features desktop-smoke,custom-protocol
-      - name: Verify desktop with the private Python runtime
+      - name: Verify desktop Home and Projects with the private Python runtime
         shell: powershell
         run: .\apps\desktop\test-windows.ps1 -Desktop .\apps\desktop\src-tauri\target\release\corinthos-desktop.exe

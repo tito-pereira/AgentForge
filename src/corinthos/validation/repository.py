@@ -2,6 +2,7 @@
 """Durable Validation drafts, sealed methods, run claims and frozen results."""
 
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from math import isfinite
@@ -21,6 +22,15 @@ from corinthos.contracts.schema import validate_schema
 from corinthos.contracts.semantics import require_validation_interfaces
 
 _MAX_JSON = 1_048_576
+
+
+@dataclass(frozen=True)
+class ValidationSummary:
+    run_id: str
+    state: str
+    plan: ContractRef
+    result: ContractRef | None
+    plan_is_active: bool
 
 
 def _identifier(value):
@@ -110,6 +120,36 @@ class ValidationRepository:
             raise StoreError("Validation persistence requires the existing ContractStore.")
         self.store = store
         self._clock = time if clock is None else clock
+
+    @staticmethod
+    def project_summary(connection, project_id) -> ValidationSummary | None:
+        """Read the latest local run and report its exact Validation identities."""
+        row = connection.execute(
+            "SELECT run_id, state, plan.contract_id, plan.revision_id, "
+            "p.active_revision_id, result.contract_id, result.revision_id, "
+            "r.contract_type, r.project_id "
+            "FROM val_runs JOIN revisions AS plan ON plan.revision_id = plan_revision_id "
+            "JOIN contracts AS p ON p.contract_id = plan.contract_id "
+            "LEFT JOIN revisions AS result ON result.revision_id = result_revision_id "
+            "LEFT JOIN contracts AS r ON r.contract_id = result.contract_id "
+            "WHERE p.project_id = ? AND p.contract_type = 'VALIDATION' "
+            "ORDER BY val_runs.rowid DESC LIMIT 1",
+            (_identifier(project_id),),
+        ).fetchone()
+        if row is None:
+            return None
+        run, state, plan_id, plan_revision, active, result_id, result_revision, kind, owner = row
+        if result_id is not None and (kind, owner) != ("VALIDATION_RESULT", project_id):
+            raise IntegrityError("The stored Validation run has an inconsistent result identity.")
+        return ValidationSummary(
+            _identifier(run),
+            state,
+            ContractRef(plan_id, plan_revision, "VALIDATION", project_id),
+            ContractRef(result_id, result_revision, "VALIDATION_RESULT", project_id)
+            if result_id is not None
+            else None,
+            active == plan_revision,
+        )
 
     def _now(self):
         value = self._clock()

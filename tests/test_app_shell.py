@@ -42,7 +42,7 @@ def test_home_creates_project_and_resumes_same_draft(tmp_path, monkeypatch, caps
     [original] = manager.list()
     assert original["payload"]["vision"] == "Create an offline notes CLI."
     assert manager.store.list_events() == []
-    assert _recent(isolated_user)["projects"][0]["path"] == str(root.resolve())
+    assert _recent(isolated_user)["projects"][0]["root"] == str(root.resolve())
     assert "PROJECT" in capsys.readouterr().out
 
     _input(monkeypatch, "3", "1", "2", "1", "5", "0", "0")
@@ -67,7 +67,7 @@ def test_open_current_only_records_a_reference(
     _input(monkeypatch, "0", "0")
     assert main(["."]) == 0
     assert "Start project specification" in capsys.readouterr().out
-    assert _recent(isolated_user)["projects"][0]["path"] == str(root.resolve())
+    assert _recent(isolated_user)["projects"][0]["root"] == str(root.resolve())
     after = {
         path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()
     }
@@ -122,18 +122,19 @@ def test_missing_recent_project_is_neither_created_nor_searched(
     assert "workspace does not exist" in result.err
     assert str(moved) not in result.out
     assert not root.exists()
-    assert _recent(isolated_user)["projects"][0]["path"] == str(root.resolve())
+    assert _recent(isolated_user)["projects"][0]["root"] == str(root.resolve())
 
 
 def test_recent_projects_are_bounded_and_reopened_paths_are_deduplicated(tmp_path, isolated_user):
     roots = [(tmp_path / f"project-{i}").resolve() for i in range(22)]
     for root in roots:
+        initialize(root)
         _remember(root)
     _remember(roots[10])
     result = _recent(isolated_user)
     expected = [roots[10], *[root for root in reversed(roots[2:]) if root != roots[10]]]
-    assert result.keys() == {"version", "projects"} and result["version"] == 1
-    assert [item["path"] for item in result["projects"]] == [str(root) for root in expected]
+    assert result.keys() == {"version", "projects"} and result["version"] == 2
+    assert [item["root"] for item in result["projects"]] == [str(root) for root in expected]
     for entry in result["projects"]:
-        assert entry.keys() == {"path", "last_opened_at"}
-        assert datetime.fromisoformat(entry["last_opened_at"]).tzinfo is not None
+        assert entry.keys() == {"root", "last_accessed_at"}
+        assert datetime.fromisoformat(entry["last_accessed_at"]).tzinfo is not None

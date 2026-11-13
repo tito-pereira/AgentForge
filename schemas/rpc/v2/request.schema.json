@@ -1,0 +1,541 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.corinthos.local/rpc/v2/request.schema.json",
+  "allOf": [
+    {
+      "$ref": "https://schemas.corinthos.local/rpc/v1/request.schema.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "projects.list"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 25
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "project.summary"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            },
+            "required": [
+              "root"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "project.open"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            },
+            "required": [
+              "root"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params",
+          "id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "work.create"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "scope_level": {
+                "enum": [
+                  "TASK",
+                  "CHANGE",
+                  "PROJECT",
+                  "CRITICAL"
+                ]
+              },
+              "objective": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 600
+              },
+              "acceptance_criteria": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                },
+                "maxItems": 8,
+                "minItems": 1
+              },
+              "parent_work_item_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^work-[0-9a-f]{32}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validation_policy": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "affected_modules": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "maxItems": 12
+              },
+              "depends_on": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^work-[0-9a-f]{32}$"
+                },
+                "maxItems": 16
+              },
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              }
+            },
+            "required": [
+              "root",
+              "scope_level",
+              "objective",
+              "acceptance_criteria"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params",
+          "id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "work.get"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              }
+            },
+            "required": [
+              "root",
+              "work_item_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "work.list"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "status": {
+                "enum": [
+                  "OPEN",
+                  "ACTIVE",
+                  "BLOCKED",
+                  "COMPLETED",
+                  "CANCELLED"
+                ]
+              },
+              "scope_level": {
+                "enum": [
+                  "TASK",
+                  "CHANGE",
+                  "PROJECT",
+                  "CRITICAL"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 25
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "root"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "work.update"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              },
+              "objective": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 600
+              },
+              "acceptance_criteria": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                },
+                "maxItems": 8,
+                "minItems": 1
+              },
+              "parent_work_item_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^work-[0-9a-f]{32}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validation_policy": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "affected_modules": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "maxItems": 12
+              },
+              "depends_on": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^work-[0-9a-f]{32}$"
+                },
+                "maxItems": 16
+              },
+              "expected_updated_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "root",
+              "work_item_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params",
+          "id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "work.status"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              },
+              "status": {
+                "enum": [
+                  "OPEN",
+                  "ACTIVE",
+                  "BLOCKED",
+                  "COMPLETED",
+                  "CANCELLED"
+                ]
+              },
+              "expected_updated_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "root",
+              "work_item_id",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params",
+          "id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "work.tree"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "parent_work_item_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^work-[0-9a-f]{32}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 25
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "root"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "work.dependencies"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 25
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "root",
+              "work_item_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    }
+  ]
+}
