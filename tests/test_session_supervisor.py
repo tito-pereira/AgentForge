@@ -13,7 +13,7 @@ from test_application_workspace import _call, _transcript
 from test_application_workspace import wire as wire
 
 from corinthos.adapters.model import AgentResult
-from corinthos.application import sidecar, workspace
+from corinthos.application import context, sidecar, workspace
 from corinthos.application.sessions import SessionApplication
 from corinthos.bootstrap import initialize
 from corinthos.contracts import ConflictError, ContractStore
@@ -31,6 +31,7 @@ class SyntheticManager:
         self.start_gate = start_gate
         self.selected = []
         self.resumes = []
+        self.prompts = []
         self.native_id = str(uuid4())
 
     def session_binding(self, provider, root, *, prompt, read_only):
@@ -38,6 +39,7 @@ class SyntheticManager:
 
     def session_plan(self, provider, root, *, prompt, read_only, **options):
         self.selected.append(provider)
+        self.prompts.append(prompt)
         return SimpleNamespace(
             capabilities=SimpleNamespace(version="1.2.3", native_resume=self.resumable),
             binding_sha256=hashlib.sha256(prompt.encode()).hexdigest(),
@@ -133,7 +135,7 @@ def test_lifecycle_and_read_only_surfaces(tmp_path):
             ProjectStateService().summary(root).sessions.latest_terminal.session_id
             == finished.session_id
         )
-        assert "sessions" not in workspace.project_summary(root)
+        assert {"sessions", "context"}.isdisjoint(workspace.project_summary(root))
         assert set(manager.selected) == {"codex"}
         assert [event["kind"] for event in app.events(root, finished.session_id)["events"]] == [
             "SESSION_CREATED",
@@ -193,6 +195,17 @@ def test_explicit_native_recovery_uses_same_work_and_binding(tmp_path):
     repo = SessionRepository(root)
     broken = repo.get(initial.session_id)
     assert broken.state == "INTERRUPTED" and broken.recoverable
+    old = context.context_for_session(root, initial.session_id)["projection"]
+    assert old["projection_id"] == broken.context_projection_id
+    assert old["projection_digest"] in manager.prompts[0]
+    assert "OPERATIONAL" in manager.prompts[0]
+    WorkService(root).update(item.work_item_id, objective="Revised operational objective")
+    new = context.context_create(root, item.work_item_id, "codex")
+    assert new["projection_digest"] != old["projection_digest"]
+    assert (
+        old["projection_digest"]
+        == context.context_verify(root, old["projection_id"])["projection_digest"]
+    )
 
     manager.linger = False
     later = SessionSupervisor(manager_factory=lambda *args, **kwargs: manager)
@@ -206,8 +219,17 @@ def test_explicit_native_recovery_uses_same_work_and_binding(tmp_path):
         assert later.wait(root, initial.session_id).state == "SUCCEEDED"
         assert manager.resumes == [None, manager.native_id]
         assert manager.selected == ["codex", "codex"]
+        assert manager.prompts[0] == manager.prompts[1]
+        assert context.context_for_session(root, initial.session_id)["projection"] == old
         with pytest.raises(SessionError):
             later.recover(root, initial.session_id)
+        assert later.wait(root, initial.session_id).context_projection_id == old["projection_id"]
+        fresh = later.start(root, item.work_item_id, "codex")
+        assert later.wait(root, fresh.session_id).state == "SUCCEEDED"
+        fresh_projection = context.context_for_session(root, fresh.session_id)["projection"]
+        assert fresh_projection["projection_digest"] != old["projection_digest"]
+        assert fresh_projection["projection_digest"] in manager.prompts[-1]
+        assert "Revised operational objective" in manager.prompts[-1]
     finally:
         later.close()
 

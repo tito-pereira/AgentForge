@@ -101,6 +101,7 @@ def _output(event, text):
 
 class CodexAdapter:
     name = "codex"
+    projection_heading = "## Frozen Corinthos context (JSON)"
 
     @staticmethod
     def capabilities(probe, general):
@@ -175,6 +176,7 @@ class CodexAdapter:
 
 class ClaudeAdapter:
     name = "claude"
+    projection_heading = "Corinthos context projection follows as JSON."
 
     @staticmethod
     def capabilities(probe, general):

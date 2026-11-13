@@ -18,6 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"corinthos {__version__}")
     from corinthos.application.cli import configure as configure_status
     from corinthos.application.cli import configure_workspace
+    from corinthos.application.context_cli import configure as configure_context
     from corinthos.application.session_cli import configure as configure_sessions
     from corinthos.bootstrap import add_cli as configure_bootstrap
     from corinthos.lifecycle.playtest_cli import add_cli as configure_playtest
@@ -31,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = configure_parser(parser)
     configure_workspace(commands)
     configure_sessions(commands)
+    configure_context(commands)
     configure_workflow_parser(commands)
     configure_validation_parser(commands)
     configure_report_parser(commands)

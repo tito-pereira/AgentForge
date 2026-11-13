@@ -134,3 +134,9 @@ code {
 .session-events { padding-left: 1.4rem; }
 .session-events li + li { margin-top: 0.4rem; }
 .session-events time { margin-left: 0.45rem; color: #3d554e; font-size: 0.83rem; }
+.context-audit h4 { margin: 0.8rem 0 0.35rem; }
+.context-audit .work-selection { margin-top: 0.65rem; }
+.context-audit .field-row { margin: 0.45rem 0; align-items: center; }
+.context-sources { padding-left: 1.4rem; }
+.context-sources li + li { margin-top: 0.5rem; }
+.context-sources .facts, .session-projection { margin-top: 0.35rem; }

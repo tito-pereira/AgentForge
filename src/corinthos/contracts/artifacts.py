@@ -5,6 +5,7 @@ import os
 import re
 import stat
 from hashlib import file_digest
+from hashlib import sha256 as _sha256
 from pathlib import Path, PureWindowsPath
 
 from .model import IntegrityError, StoreError
@@ -57,7 +58,9 @@ def private_directory(project_root: Path, name: str | None = None, *, create: bo
         raise StoreError("The private project directory is unavailable.") from None
 
 
-def verify_artifact(project_root: Path, relative_path: str, sha256: str) -> None:
+def verify_artifact(
+    project_root: Path, relative_path: str, sha256: str, *, max_bytes: int | None = None
+) -> None:
     """Verify an existing regular artifact by a portable relative path and SHA-256."""
     if not isinstance(relative_path, str) or not isinstance(sha256, str):
         raise IntegrityError("An artifact reference requires a path and digest.")
@@ -82,9 +85,23 @@ def verify_artifact(project_root: Path, relative_path: str, sha256: str) -> None
         if not path.resolve(strict=True).is_relative_to(base):
             raise IntegrityError("Artifact path escapes private storage.")
         with path.open("rb") as stream:
-            if not os.path.samestat(info, os.fstat(stream.fileno())):
+            before = os.fstat(stream.fileno())
+            if not os.path.samestat(info, before):
                 raise IntegrityError("The artifact changed while it was opened.")
-            observed = file_digest(stream, "sha256").hexdigest()
+            if max_bytes is None:
+                observed = file_digest(stream, "sha256").hexdigest()
+            else:
+                if before.st_size > max_bytes:
+                    raise IntegrityError("The artifact exceeds its verification size limit.")
+                data = stream.read(max_bytes + 1)
+                after = os.fstat(stream.fileno())
+                if (
+                    len(data) != before.st_size
+                    or after.st_size != before.st_size
+                    or after.st_mtime_ns != before.st_mtime_ns
+                ):
+                    raise IntegrityError("The artifact changed during bounded verification.")
+                observed = _sha256(data).hexdigest()
     except (OSError, StoreError, RuntimeError):
         raise IntegrityError("The referenced artifact could not be read safely.") from None
     if observed != sha256:

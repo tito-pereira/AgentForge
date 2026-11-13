@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { bridge, type AgentSession, type ProviderStatus, type SessionEvent, type WorkNode } from "./bridge";
+import { bridge, type AgentSession, type ContextProjection, type ProviderStatus, type SessionEvent, type WorkNode } from "./bridge";
 
 const activeStates = ["STARTING", "RUNNING", "CANCELLING"];
 const defaultTimeout = "120";
@@ -45,6 +45,7 @@ export function Agents({ root, methods, providers }: {
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [work, setWork] = useState<WorkNode[]>([]);
   const [detail, setDetail] = useState<AgentSession | null>(null);
+  const [binding, setBinding] = useState<ContextProjection | null>(null);
   const [events, setEvents] = useState<SessionEvent[]>([]);
   const [cursor, setCursor] = useState(0);
   const [moreEvents, setMoreEvents] = useState(false);
@@ -61,6 +62,7 @@ export function Agents({ root, methods, providers }: {
   const canStart = methods.includes("session.start");
   const canGet = methods.includes("session.get");
   const canReadEvents = methods.includes("session.events");
+  const canReadBinding = methods.includes("context.for_session");
 
   async function loadSessions(target: number) {
     const page = await bridge.sessions(root, target);
@@ -79,11 +81,13 @@ export function Agents({ root, methods, providers }: {
 
   async function select(session: AgentSession) {
     setDetail(session);
+    setBinding(null);
     setRecoveryInstruction("");
     setEvents([]);
     setCursor(0);
     setMoreEvents(false);
     await loadEvents(session.session_id, 0);
+    if (canReadBinding) setBinding((await bridge.contextForSession(root, session.session_id)).projection);
   }
 
   async function run(action: () => Promise<void>, message: string) {
@@ -146,6 +150,7 @@ export function Agents({ root, methods, providers }: {
           if (!mounted) return;
           setDetail(current);
           await loadEvents(current.session_id, cursor);
+          if (canReadBinding && !binding) setBinding((await bridge.contextForSession(root, current.session_id)).projection);
         }
       } catch {
         if (mounted) setError("Could not refresh the active sessions. Refresh to retry.");
@@ -157,7 +162,7 @@ export function Agents({ root, methods, providers }: {
       mounted = false;
       clearInterval(timer);
     };
-  }, [root, offset, detail?.session_id, shouldPoll, cursor, canGet, canReadEvents]);
+  }, [root, offset, detail?.session_id, shouldPoll, cursor, canGet, canReadEvents, canReadBinding, binding]);
 
   async function refresh(target: number) {
     await run(async () => {
@@ -166,6 +171,7 @@ export function Agents({ root, methods, providers }: {
         const value = await bridge.sessionGet(root, detail.session_id);
         setDetail(value);
         await loadEvents(value.session_id, cursor);
+        if (canReadBinding && !binding) setBinding((await bridge.contextForSession(root, value.session_id)).projection);
       }
     }, "Could not refresh sessions. Try again.");
   }
@@ -227,6 +233,12 @@ export function Agents({ root, methods, providers }: {
         <div className="work-selection session-detail">
           <h4>{detail.session_id}</h4>
           <SessionFacts session={detail} />
+          {binding && (
+            <dl className="facts session-projection">
+              <div><dt>Context projection</dt><dd><code>{binding.projection_id}</code></dd></div>
+              <div><dt>Context digest</dt><dd><code>{binding.projection_digest}</code></dd></div>
+            </dl>
+          )}
           <div className="field-row">
             {detail.can_cancel && methods.includes("session.cancel") && (
               <button type="button" disabled={busy} onClick={() => void actOnSession(detail, false)}>Cancel session</button>

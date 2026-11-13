@@ -29,6 +29,15 @@
     field.dispatchEvent(new Event(field instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
   };
 
+  const buttonNamed = (selector, label) => Array.from(document.querySelectorAll(selector)).find(
+    (button) => text(button) === label,
+  );
+  const view = (name) => buttonNamed(".project-views button", name);
+  const sha256 = (value) => /^[a-f0-9]{64}$/.test(value ?? "");
+  const revealsSecret = (selector) => (text(document.querySelector(selector)) ?? "").includes(
+    "v8-fixture-hidden-value",
+  );
+
   async function verify() {
     const backendReady = await waitFor(() => {
       const backend = document.querySelector("#backend-title")?.closest("section");
@@ -56,7 +65,7 @@
       const missing = Array.from(document.querySelectorAll(".project-list li")).find(
         (row) => text(row.querySelector("h3")) === "missing-project",
       );
-      return text(projectRow()?.querySelector(".section-heading span")) === (startSessions ? "Current · v8" : "Older schema · v7") &&
+      return text(projectRow()?.querySelector(".section-heading span")) === (startSessions ? "Current · v9" : "Older schema · v8") &&
         text(missing?.querySelector(".section-heading span")) === "Missing";
     });
     if (!legacyRegistry) return report("fail [registry]");
@@ -70,24 +79,65 @@
         normalizeWindowsPath(renderedPath) === normalizeWindowsPath(projectRoot) &&
         valueFor(project, "Path") === "Directory" &&
         valueFor(project, "Initialized") === "Yes" &&
-        valueFor(project, "Storage") === "Current · v8" &&
+        valueFor(project, "Storage") === "Current · v9" &&
         valueFor(project, "Work Items") === "1"
       );
     });
     if (!projectShown) return report("fail [project]");
 
-    const agentsButton = Array.from(document.querySelectorAll(".project-views button")).find(
-      (button) => text(button) === "Agents",
-    );
-    if (!agentsButton) return report("fail [agents]");
-    agentsButton.click();
+    const contextButton = view("Context");
+    if (!contextButton) return report("fail [context]");
+    contextButton.click();
+    const contextReady = await waitFor(() => {
+      const work = document.querySelector("#context-work-items option");
+      const filter = document.querySelector("#context-work");
+      return text(work) === "TASK · ACTIVE" && filter && !filter.matches(":disabled");
+    });
+    if (!contextReady) return report("fail [context]");
+    const workId = document.querySelector("#context-work-items option").value;
+    setInput(document.querySelector("#context-work"), workId);
+    setInput(document.querySelector("#context-provider"), "codex");
+    if (!(await waitFor(() => buttonNamed(".context-audit button", "Create projection")?.matches(":enabled")))) {
+      return report("fail [context]");
+    }
+    const create = buttonNamed(".context-audit button", "Create projection");
+    create.form.requestSubmit(create);
+    const projection = () => document.querySelector(".projection-detail");
+    const projectionReady = await waitFor(() => {
+      const sources = Array.from(document.querySelectorAll(".context-sources li"));
+      return valueFor(projection(), "Work Item") === workId &&
+        valueFor(projection(), "Target provider") === "codex" &&
+        valueFor(projection(), "Selector policy") === "1" &&
+        valueFor(projection(), "Redaction policy") === "1" &&
+        sha256(valueFor(projection(), "Projection digest")) &&
+        sha256(valueFor(projection(), "Source set digest")) &&
+        sources.some((source) =>
+          text(source.querySelector("strong")) === "WORK_ITEM · OPERATIONAL" &&
+          valueFor(source, "Identity") === workId &&
+          sha256(valueFor(source, "Digest")) &&
+          !["", "None applied", undefined].includes(valueFor(source, "Redaction")),
+        );
+    });
+    if (!projectionReady || revealsSecret(".context-audit")) return report("fail [context]");
+    const verifyButton = buttonNamed(".context-audit button", "Verify projection");
+    if (!verifyButton) return report("fail [verify]");
+    verifyButton.click();
+    if (!(await waitFor(() => text(projection()?.querySelector("[role=status]")) === "Verified"))) {
+      return report("fail [verify]");
+    }
+
+    if (!view("Agents")) return report("fail [agents]");
+    view("Agents").click();
     const passive = await waitFor(() => {
-      const view = document.querySelector(".agents");
-      const work = view?.querySelector("#session-work-items option");
-      return text(view?.querySelector("p")) === "No Agent Sessions on this page." &&
+      const work = document.querySelector("#session-work-items option");
+      return text(document.querySelector(".agents .session-list"))?.includes("SUCCEEDED") &&
         text(work) === "Preserve this Work Item";
     });
     if (!passive) return report("fail [agents]");
+    const legacySession = document.querySelector(".session-list li[data-state=SUCCEEDED] button");
+    legacySession.click();
+    if (!(await waitFor(() => valueFor(document.querySelector(".session-detail"), "State") === "SUCCEEDED")) ||
+        document.querySelector(".session-projection")) return report("fail [binding]");
     if (!startSessions) return report("pass");
 
     const details = () => document.querySelector(".session-detail");
@@ -108,7 +158,9 @@
       startButton().form.requestSubmit(startButton());
       return waitFor(() => {
         const id = text(details()?.querySelector("h4"));
-        return id && id !== previous && state() === "RUNNING" && event("OUTPUT");
+        return id && id !== previous && state() === "RUNNING" && event("OUTPUT") &&
+          Boolean(valueFor(details(), "Context projection")) &&
+          sha256(valueFor(details(), "Context digest"));
       });
     }
 
@@ -121,6 +173,27 @@
     if (!(await waitFor(() => state() === "CANCELLED" && event("CANCELLED")))) {
       return report("fail [cancel]");
     }
+    const cancelledSession = text(details()?.querySelector("h4"));
+    view("Context").click();
+    if (!(await waitFor(() => document.querySelector('#handoff-session') &&
+          !document.querySelector('#handoff-session').matches(':disabled')))) return report("fail [handoff]");
+    setInput(document.querySelector("#handoff-session"), cancelledSession);
+    if (!(await waitFor(() => buttonNamed(".context-audit button", "Create handoff")?.matches(":enabled")))) {
+      return report("fail [handoff]");
+    }
+    const createHandoff = buttonNamed(".context-audit button", "Create handoff");
+    createHandoff.form.requestSubmit(createHandoff);
+    const handoff = () => document.querySelector(".handoff-detail");
+    if (!(await waitFor(() =>
+      valueFor(handoff(), "Source session") === cancelledSession &&
+      valueFor(handoff(), "Terminal state") === "CANCELLED" &&
+      valueFor(handoff(), "Authority") === "DERIVED" &&
+      Number(valueFor(handoff(), "Event cutoff")) > 0 &&
+      sha256(valueFor(handoff(), "Handoff digest")),
+    )) || revealsSecret(".context-audit")) return report("fail [handoff]");
+    view("Agents").click();
+    if (!(await waitFor(() => document.querySelector("#session-work-items option") &&
+          !document.querySelector("#session-work").matches(":disabled")))) return report("fail [agents]");
     if (!(await start(8))) return report("fail [start]");
     if (!(await waitFor(() => state() === "TIMED_OUT" && event("TIMED_OUT")))) {
       return report("fail [timeout]");

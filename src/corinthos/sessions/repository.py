@@ -251,6 +251,7 @@ class SessionRepository:
         lease_seconds=30,
         native_resume=False,
         read_only=True,
+        context_projection_id=None,
     ) -> Session:
         _identifier(work_item_id, _WORK_ID)
         _identifier(provider)
@@ -261,6 +262,8 @@ class SessionRepository:
             raise SessionError("Use an Agent Session timeout between 1 and 3600 seconds.")
         if type(native_resume) is not bool or type(read_only) is not bool:
             raise SessionError("The Agent Session execution mode is invalid.")
+        if context_projection_id is not None:
+            _identifier(context_projection_id)
         session_id = f"session-{uuid4().hex}"
         with self._write() as connection:
             now = self.now()
@@ -275,8 +278,8 @@ class SessionRepository:
                 """INSERT INTO agent_sessions (
                     session_id, project_id, work_item_id, provider, read_only, native_resume,
                     envelope_sha256, state, run_generation, owner_id, lease_expires_at,
-                    timeout_seconds, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'STARTING', 1, ?, ?, ?, ?, ?)""",
+                    timeout_seconds, created_at, updated_at, context_projection_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'STARTING', 1, ?, ?, ?, ?, ?, ?)""",
                 (
                     session_id,
                     work["project_id"],
@@ -290,6 +293,7 @@ class SessionRepository:
                     timeout_seconds,
                     _timestamp(now),
                     _timestamp(now),
+                    context_projection_id,
                 ),
             )
             row = self._row(connection, session_id)

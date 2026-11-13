@@ -9,6 +9,7 @@ from threading import Event, Lock, Thread
 from time import monotonic
 from uuid import uuid4
 
+from corinthos.adapters import AdapterManager
 from corinthos.bootstrap import _root, adapter_manager
 from corinthos.contracts import ConflictError, ContractError
 from corinthos.contracts.model import canonical_json
@@ -65,23 +66,25 @@ def _prompt(work, instruction, read_only):
     )
 
 
-def _envelope(session, native_binding):
-    return sha256(
-        canonical_json(
-            {
-                "native_plan": native_binding,
-                "work_item_id": session.work_item_id,
-                "project_id": session.project_id,
-            }
-        ).encode()
-    ).hexdigest()
+def _envelope(session, native_binding, projection):
+    data = {
+        "native_plan": native_binding,
+        "work_item_id": session.work_item_id,
+        "project_id": session.project_id,
+    }
+    if projection is not None:
+        data["projection_id"] = projection.projection_id
+        data["projection_digest"] = projection.projection_digest
+    return sha256(canonical_json(data).encode()).hexdigest()
 
 
 def _observed_text(value, limit):
+    from corinthos.context.redaction import sanitize_text
+
     if not isinstance(value, str):
         return None
     value = "".join(c if c.isprintable() or c in "\n\t" else " " for c in value)
-    return _SECRET.sub("[redacted]", value[: limit * 2])[:limit] or None
+    return sanitize_text(_SECRET.sub("[redacted]", value))[:limit] or None
 
 
 class _Run:
@@ -202,7 +205,28 @@ class SessionSupervisor:
             work = WorkService(root).get(work_item_id)
             if work.status in {"COMPLETED", "CANCELLED"}:
                 raise SessionError("The Work Item is closed.")
-            prompt = _prompt(work, instruction, read_only)
+            from corinthos.context import ContextService
+            from corinthos.context.redaction import sanitize_text
+
+            context_service = ContextService(root)
+            projection = None
+            if original is None:
+                projection = context_service.create(work_item_id, provider)
+            elif original.context_projection_id is not None:
+                projection = context_service.verify(original.context_projection_id)
+                if (
+                    projection.project_id != original.project_id
+                    or projection.work_item_id != original.work_item_id
+                    or projection.target_provider != original.provider
+                ):
+                    raise SessionError("The stored session projection has inconsistent ownership.")
+            if projection is None:
+                # v8 sessions retain their historical envelope and binding.
+                prompt = _prompt(work, instruction, read_only)
+            else:
+                prompt = AdapterManager.render_session_projection(
+                    projection, sanitize_text(instruction), read_only=read_only
+                )
             owner_id = "supervisor-" + uuid4().hex
             if original is None:
                 session = repository.create(
@@ -211,6 +235,7 @@ class SessionSupervisor:
                     owner_id=owner_id,
                     timeout_seconds=timeout_seconds,
                     read_only=read_only,
+                    context_projection_id=projection.projection_id,
                     lease_seconds=_LEASE_SECONDS,
                 )
             else:
@@ -225,7 +250,7 @@ class SessionSupervisor:
             self._runs[key] = run
             worker = Thread(
                 target=self._execute,
-                args=(key, run, prompt, executable, owner_fd, original),
+                args=(key, run, prompt, executable, owner_fd, original, projection),
                 name="corinthos-agent-session",
             )
             try:
@@ -290,7 +315,7 @@ class SessionSupervisor:
             model=_observed_text(event.get("model"), 128),
         )
 
-    def _execute(self, key, run, prompt, executable, owner_fd, original):
+    def _execute(self, key, run, prompt, executable, owner_fd, original, projection):
         from corinthos.adapters.service import SessionPlanError
 
         root, _ = key
@@ -310,7 +335,7 @@ class SessionSupervisor:
                 expected = manager.session_binding(
                     session.provider, root, prompt=prompt, read_only=session.read_only
                 )
-                if _envelope(session, expected) != original.envelope_sha256:
+                if _envelope(session, expected, projection) != original.envelope_sha256:
                     raise SessionPlanError("RECOVERY_ENVELOPE_CHANGED")
             plan = manager.session_plan(
                 session.provider,
@@ -323,7 +348,7 @@ class SessionSupervisor:
                 prepare=original is None,
                 expected_binding_sha256=expected,
             )
-            binding = _envelope(session, plan.binding_sha256)
+            binding = _envelope(session, plan.binding_sha256, projection)
             if original is not None and (
                 binding != original.envelope_sha256 or not plan.capabilities.native_resume
             ):

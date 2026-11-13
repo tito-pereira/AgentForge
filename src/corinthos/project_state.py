@@ -5,6 +5,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+from corinthos.context.repository import ContextRepository
 from corinthos.contracts import ContractError, ContractRef, ContractStore
 from corinthos.lifecycle.repository import LifecycleRepository, LifecycleSummary
 from corinthos.project_registry import ProjectRegistryService, display_name
@@ -38,6 +39,7 @@ class _ProjectSources:
     work_items: WorkCounts | None
     unavailable_sources: list[str]
     sessions: SessionSummary | None
+    context: dict | None
 
 
 @dataclass(frozen=True)
@@ -53,12 +55,16 @@ class ProjectSummary(_ProjectSources):
 
 
 def _unavailable(
-    work_items: WorkCounts | None, sessions: SessionSummary | None = None
+    work_items: WorkCounts | None,
+    sessions: SessionSummary | None = None,
+    context: dict | None = None,
 ) -> _ProjectSources:
     unavailable = list(_MISSING_SOURCES)
     if work_items is None:
         unavailable.append("WORK_ITEMS")
-    return _ProjectSources(None, None, None, [], [], None, None, work_items, unavailable, sessions)
+    return _ProjectSources(
+        None, None, None, [], [], None, None, work_items, unavailable, sessions, context
+    )
 
 
 def _inspect_sources(
@@ -71,8 +77,11 @@ def _inspect_sources(
         else WorkService.project_identity(connection, schema_version=schema)
     )
     sessions = SessionRepository.snapshot_summary(connection) if schema >= 8 else None
+    context = ContextRepository.snapshot_summary(connection) if schema >= 9 else None
     if project_id is None:
-        return _unavailable(work.counts(connection=connection) if schema >= 7 else None, sessions)
+        return _unavailable(
+            work.counts(connection=connection) if schema >= 7 else None, sessions, context
+        )
 
     workflow = ContractStore.active_references(connection, project_id, "WORKFLOW", limit=2)
     modules = ContractStore.active_references(
@@ -110,6 +119,7 @@ def _inspect_sources(
         work_items,
         unavailable,
         sessions,
+        context,
     )
 
 

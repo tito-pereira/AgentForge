@@ -6,7 +6,7 @@ import sys
 from dataclasses import asdict
 from typing import BinaryIO, TextIO
 
-from corinthos.application import project_status, providers_status, version, workspace
+from corinthos.application import context, project_status, providers_status, version, workspace
 from corinthos.application.sessions import SessionApplication
 from corinthos.contracts import ContractError
 
@@ -31,6 +31,19 @@ _WORK_CONTENT = (
     "depends_on",
 )
 _V2_OPERATIONS = {
+    "context.create": (context.context_create, ("root", "work_item_id", "provider"), ()),
+    "context.get": (context.context_get, ("root", "projection_id"), ()),
+    "context.list": (context.context_list, ("root",), ("work_item_id", *_PAGE_OPTIONS)),
+    "context.sources": (context.context_sources, ("root", "projection_id"), _PAGE_OPTIONS),
+    "context.verify": (context.context_verify, ("root", "projection_id"), ()),
+    "context.for_session": (context.context_for_session, ("root", "session_id"), ()),
+    "handoff.create": (context.handoff_create, ("root", "session_id"), ()),
+    "handoff.get": (context.handoff_get, ("root", "handoff_id"), ()),
+    "handoff.list": (
+        context.handoff_list,
+        ("root",),
+        ("work_item_id", "session_id", *_PAGE_OPTIONS),
+    ),
     "projects.list": (workspace.projects_list, (), _PAGE_OPTIONS),
     "project.summary": (workspace.project_summary, ("root",), ()),
     "project.open": (workspace.project_open, ("root",), ()),
@@ -71,6 +84,8 @@ _SESSION_OPERATIONS = {
     "session.recover": ("recover", ("root", "session_id"), ("instruction",)),
 }
 _MUTATIONS = {
+    "context.create",
+    "handoff.create",
     "project.open",
     "work.create",
     "work.update",

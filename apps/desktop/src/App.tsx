@@ -9,6 +9,7 @@ import {
   type ProviderStatus,
 } from "./bridge";
 import { Agents } from "./Agents";
+import { ContextAudit } from "./ContextAudit";
 import { WorkItems } from "./WorkItems";
 
 const storageLabels: Record<ProjectStatus["storage"], string> = {
@@ -133,7 +134,7 @@ function RegistryEntry({ entry, busy, inspect, open }: {
 }
 
 function Projects({ methods, providers }: { methods: string[]; providers: ProviderStatus[] }) {
-  const [view, setView] = useState<"work" | "agents">("work");
+  const [view, setView] = useState<"work" | "agents" | "context">("work");
   const [root, setRoot] = useState("");
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [registry, setRegistry] = useState<ProjectEntry[]>([]);
@@ -146,6 +147,8 @@ function Projects({ methods, providers }: { methods: string[]; providers: Provid
   const canList = methods.includes("projects.list");
   const canOpen = methods.includes("project.open");
   const canInspect = methods.includes("project.summary");
+  const canViewAgents = Boolean(project?.initialized && (project.schema_version ?? 0) >= 8 && methods.includes("session.list"));
+  const canAuditContext = Boolean(project?.initialized && (project.schema_version ?? 0) >= 9 && methods.includes("context.list"));
   const listRequest = useRef(0);
 
   async function loadProjects(target: number) {
@@ -240,14 +243,18 @@ function Projects({ methods, providers }: { methods: string[]; providers: Provid
         <section aria-labelledby="project-title">
           <div className="section-heading"><h2 id="project-title">Project Summary</h2></div>
           <ProjectFacts project={project} />
-          {project.initialized && project.schema_version === 8 && methods.includes("session.list") && (
+          {(canViewAgents || canAuditContext) && (
             <div className="field-row project-views" aria-label="Project views">
               <button type="button" aria-pressed={view === "work"} onClick={() => setView("work")}>Work Items</button>
-              <button type="button" aria-pressed={view === "agents"} onClick={() => setView("agents")}>Agents</button>
+              {canViewAgents && <button type="button" aria-pressed={view === "agents"} onClick={() => setView("agents")}>Agents</button>}
+              {canAuditContext && <button type="button" aria-pressed={view === "context"} onClick={() => setView("context")}>Context</button>}
             </div>
           )}
-          {view === "agents" && project.initialized && project.schema_version === 8 && methods.includes("session.list") && (
+          {view === "agents" && canViewAgents && (
             <Agents key={project.root} root={project.root} methods={methods} providers={providers} />
+          )}
+          {view === "context" && canAuditContext && (
+            <ContextAudit key={project.root} root={project.root} methods={methods} providers={providers} />
           )}
 
           {view === "work" && project.initialized && (project.storage === "CURRENT" || project.storage === "ABSENT") && methods.includes("work.tree") && (

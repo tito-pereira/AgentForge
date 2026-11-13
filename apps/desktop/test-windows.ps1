@@ -86,36 +86,51 @@ try {
     [IO.File]::WriteAllText($recent, $legacyRegistry)
     $recentHash = (Get-FileHash -LiteralPath $recent).Hash
 
-    $baseline = '5d913b7b18ef720f963e7614046a4062a4b2367f'
-    $archive = Join-Path $work 'phase-two.zip'
-    $legacy = Join-Path $work 'phase-two'
+    $baseline = '13e7bf556788e737493d767b30e12a6613c8fa73'
+    $archive = Join-Path $work 'phase-three.zip'
+    $legacy = Join-Path $work 'phase-three'
     git -C $repo archive --format=zip "--output=$archive" $baseline -- src/corinthos
-    if ($LASTEXITCODE -ne 0) { throw 'The exact Phase 2 source is required for the desktop v7 fixture.' }
+    if ($LASTEXITCODE -ne 0) { throw 'The exact Phase 3 source is required for the desktop v8 fixture.' }
     [IO.Compression.ZipFile]::ExtractToDirectory($archive, $legacy)
     $legacySource = Join-Path $legacy 'src'
-    $makeV7Path = Join-Path $work 'make_v7.py'
-    $makeV7 = @'
+    $makeV8Path = Join-Path $work 'make_v8.py'
+    $makeV8 = @'
 import sqlite3, sys
 from contextlib import closing
 sys.path.insert(0, sys.argv[1])
 from corinthos.contracts import ContractStore
 from corinthos.contracts import store
+from corinthos.sessions.repository import SessionRepository
 from corinthos.work import WorkService
-assert store._SCHEMA_VERSION == 7 and store.__file__.startswith(sys.argv[1])
+assert store._SCHEMA_VERSION == 8 and store.__file__.startswith(sys.argv[1])
 work = WorkService(sys.argv[2])
 item = work.create(
     scope_level="TASK",
     objective="Preserve this Work Item",
-    acceptance_criteria=["Keep the existing Work Item state unchanged."],
+    acceptance_criteria=[
+        "Keep the existing Work Item state unchanged.",
+        "api_key=v8-fixture-hidden-value",
+    ],
 )
 work.transition(item.work_item_id, "ACTIVE")
+sessions = SessionRepository(sys.argv[2])
+legacy = sessions.create(
+    item.work_item_id, provider="codex", owner_id="fixture-owner",
+    timeout_seconds=120, envelope_sha256="a" * 64,
+)
+fence = (legacy.session_id, legacy.owner_id, legacy.run_generation)
+sessions.running(*fence, provider_version="9.8.6", model="fixture-model")
+sessions.observe(*fence, "OUTPUT", {"text": "Historical fixture observation"})
+sessions.observe(*fence, "USAGE", {}, usage={"input_tokens": 12, "output_tokens": 1})
+sessions.finish(*fence, "SUCCEEDED")
 database = ContractStore(sys.argv[2]).database_path
 with closing(sqlite3.connect(database)) as connection:
-    assert connection.execute("PRAGMA user_version").fetchone() == (7,)
-    assert connection.execute("SELECT name FROM sqlite_schema WHERE name = 'agent_sessions'").fetchall() == []
+    assert connection.execute("PRAGMA user_version").fetchone() == (8,)
+    assert connection.execute("SELECT name FROM sqlite_schema WHERE name = 'context_projections'").fetchall() == []
+    assert connection.execute("SELECT count(*) FROM agent_sessions").fetchone() == (1,)
 '@
-    [IO.File]::WriteAllText($makeV7Path, $makeV7)
-    Invoke-PrivatePython $paths.Install @($makeV7Path, $legacySource, $project)
+    [IO.File]::WriteAllText($makeV8Path, $makeV8)
+    Invoke-PrivatePython $paths.Install @($makeV8Path, $legacySource, $project)
     $database = Join-Path $project '.corinthos\state.db'
     $databaseHash = (Get-FileHash -LiteralPath $database).Hash
 
@@ -147,7 +162,10 @@ internal static class Provider {
             Console.WriteLine("--sandbox read-only --json stdin SESSION_ID");
         } else {
             if (args.Length == 0 || args[0] != "exec" || Array.IndexOf(args, "--json") < 0) return 2;
-            Console.In.ReadToEnd();
+            string input = Console.In.ReadToEnd();
+            if (input.Contains("v8-fixture-hidden-value") ||
+                !input.Contains("projection_id") ||
+                !input.Contains("projection_digest")) return 3;
             File.AppendAllText(log, "launch" + Environment.NewLine);
             using (var child = Process.Start(new ProcessStartInfo {
                 FileName = Assembly.GetExecutingAssembly().Location,
@@ -180,7 +198,7 @@ internal static class Provider {
     cargo test --manifest-path $manifest --locked --no-default-features private_runtime_repeated_cycles -- --ignored --nocapture
     if ($LASTEXITCODE -ne 0) { throw 'Private runtime lifecycle integration failed.' }
     Assert-Spike (![IO.File]::Exists($registry) -and ![IO.File]::Exists($autoLog)) 'Passive bridge started a PATH provider or wrote its registry.'
-    Assert-Spike ((Get-FileHash -LiteralPath $database).Hash -eq $databaseHash) 'Passive bridge migrated the v7 project.'
+    Assert-Spike ((Get-FileHash -LiteralPath $database).Hash -eq $databaseHash) 'Passive bridge migrated the v8 project.'
     Assert-Spike ((Get-FileHash -LiteralPath $recent).Hash -eq $recentHash) 'Passive bridge changed the v1 registry.'
 
     $fixture = @{
@@ -191,22 +209,22 @@ internal static class Provider {
     $registryHash = (Get-FileHash -LiteralPath $registry).Hash
     $env:CORINTHOS_SIDECAR_PYTHON = $null
     Invoke-DesktopFixture 'passive'
-    Assert-Spike (![IO.File]::Exists($autoLog) -and ![IO.File]::Exists($configuredLog)) 'Passive Agents rendering launched a provider.'
-    Assert-Spike ((Get-FileHash -LiteralPath $registry).Hash -eq $registryHash) 'Passive Agents rendering rewrote provider state.'
-    Write-Host 'Desktop WebView displayed the RPC v2 handshake, registry, migrated v8 project and passive Agents view without native probes.'
+    Assert-Spike (![IO.File]::Exists($autoLog) -and ![IO.File]::Exists($configuredLog)) 'Context audit, projection verification or passive Agents rendering launched a provider.'
+    Assert-Spike ((Get-FileHash -LiteralPath $registry).Hash -eq $registryHash) 'Context or passive Agents rendering rewrote provider state.'
+    Write-Host 'Desktop WebView displayed the migrated v9 project, verified an immutable projection and its redacted source provenance, and inspected legacy Agents without native probes.'
 
     Invoke-DesktopFixture 'sessions'
     Assert-Spike (![IO.File]::Exists($autoLog) -and [IO.File]::Exists($configuredLog)) 'Explicit sessions did not select only the configured provider.'
     Assert-Spike (@([IO.File]::ReadAllLines($configuredLog) | Where-Object { $_ -eq 'launch' }).Count -eq 3) 'Expected exactly three supervised native invocations.'
     Assert-Spike ((Get-FileHash -LiteralPath $registry).Hash -eq $registryHash) 'Starting sessions rewrote the configured provider registry.'
     Assert-Spike ((Get-FileHash -LiteralPath $profile).Hash -eq $profileHash) 'Desktop changed the project bootstrap.'
-    Write-Host 'Actual WebView started three deterministic sessions, verified output, cancelled one and let one time out, then closed with an active provider. Sidecar and all fixture provider trees were reaped.'
+    Write-Host 'Actual WebView bound three deterministic sessions to projections, created an immutable handoff, tested cancellation and timeout and closed with an active provider. The sidecar and all fixture provider trees were reaped.'
 
 
     $savedRegistry = Get-Content -Raw -LiteralPath $recent | ConvertFrom-Json
     Assert-Spike ($savedRegistry.version -eq 2 -and $savedRegistry.projects.Count -eq 2 -and $savedRegistry.projects[0].root -eq $project) 'Explicit project open lost legacy registry entries.'
-    $backups = @(Get-ChildItem -File -LiteralPath (Split-Path $database) -Filter 'state.pre-v8-*.db')
-    Assert-Spike ($backups.Count -eq 1) 'Explicit project open did not preserve exactly one v7 backup.'
+    $backups = @(Get-ChildItem -File -LiteralPath (Split-Path $database) -Filter 'state.pre-v9-*.db')
+    Assert-Spike ($backups.Count -eq 1) 'Explicit project open did not preserve exactly one v8 backup.'
     $checkMigrationPath = Join-Path $work 'check_migration.py'
     $checkMigration = @'
 import sqlite3, sys
@@ -222,21 +240,44 @@ def inspect(database):
         assert db.execute("SELECT objective, status FROM work_items").fetchall() == [
             ("Preserve this Work Item", "ACTIVE")
         ]
-        if version == 8:
+        legacy_session = db.execute(
+            "SELECT session_id, state, provider_version, model, input_tokens, output_tokens "
+            "FROM agent_sessions WHERE provider_version = '9.8.6'"
+        ).fetchone()
+        assert legacy_session[1:] == ("SUCCEEDED", "9.8.6", "fixture-model", 12, 1)
+        legacy_events = db.execute(
+            "SELECT * FROM agent_session_events WHERE session_id = ? ORDER BY sequence",
+            (legacy_session[0],),
+        ).fetchall()
+        if version == 9:
+            assert db.execute("SELECT context_projection_id FROM agent_sessions WHERE session_id = ?",
+                              (legacy_session[0],)).fetchone() == (None,)
             states = db.execute(
-                "SELECT session_id, state FROM agent_sessions ORDER BY created_at, session_id"
+                "SELECT a.session_id, a.state, p.projection_digest FROM agent_sessions a "
+                "JOIN context_projections p ON p.projection_id = a.context_projection_id "
+                "ORDER BY a.created_at, a.session_id"
             ).fetchall()
-            assert [state for _, state in states] == ["CANCELLED", "TIMED_OUT", "INTERRUPTED"], states
-            for session_id, state in states:
+            assert [state for _, state, _ in states] == ["CANCELLED", "TIMED_OUT", "INTERRUPTED"], states
+            for session_id, state, digest in states:
+                assert len(digest) == 64
                 kinds = db.execute(
                     "SELECT kind FROM agent_session_events WHERE session_id = ?", (session_id,)
                 ).fetchall()
                 assert ("OUTPUT",) in kinds and (state,) in kinds, (state, kinds)
-        return version, work
+            [handoff] = db.execute("SELECT source_session_id, event_cutoff FROM session_handoffs")
+            assert handoff[0] == states[0][0]
+            cutoff = db.execute(
+                "SELECT MAX(sequence) FROM agent_session_events WHERE session_id = ?", (handoff[0],)
+            ).fetchone()[0]
+            assert handoff[1] == cutoff
+            for table in ("context_projections", "context_projection_sources", "session_handoffs"):
+                captures = db.execute(f"SELECT * FROM {table}").fetchall()
+                assert captures and "v8-fixture-hidden-value" not in repr(captures)
+        return version, work, legacy_session, legacy_events
 
 current, backup = map(inspect, sys.argv[1:])
-assert current[0] == 8 and backup[0] == 7
-assert current[1] == backup[1]
+assert current[0] == 9 and backup[0] == 8
+assert current[1:] == backup[1:]
 '@
     [IO.File]::WriteAllText($checkMigrationPath, $checkMigration)
     Invoke-PrivatePython $paths.Install @($checkMigrationPath, $database, $backups[0].FullName)
