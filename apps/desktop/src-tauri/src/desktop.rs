@@ -96,13 +96,19 @@ async fn snapshot(app: AppHandle, state: DesktopState, restart: bool) -> Snapsho
 }
 
 #[tauri::command]
-async fn backend_snapshot(app: AppHandle, state: State<'_, DesktopState>) -> Snapshot {
-    snapshot(app, state.inner().clone(), false).await
+async fn backend_snapshot(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<Snapshot, &'static str> {
+    Ok(snapshot(app, state.inner().clone(), false).await)
 }
 
 #[tauri::command]
-async fn restart_backend(app: AppHandle, state: State<'_, DesktopState>) -> Snapshot {
-    snapshot(app, state.inner().clone(), true).await
+async fn restart_backend(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<Snapshot, &'static str> {
+    Ok(snapshot(app, state.inner().clone(), true).await)
 }
 
 #[tauri::command]
