@@ -217,6 +217,8 @@ jobs:
         run: |
           $env:CORINTHOS_SIDECAR_TEST_PYTHON = (Get-Command python.exe -ErrorAction Stop).Source
           cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --no-default-features
+      - name: Build the WebView test observer
+        run: cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --release --features desktop-smoke,custom-protocol
       - name: Verify desktop with the private Python runtime
         shell: powershell
         run: .\apps\desktop\test-windows.ps1 -Desktop .\apps\desktop\src-tauri\target\release\corinthos-desktop.exe

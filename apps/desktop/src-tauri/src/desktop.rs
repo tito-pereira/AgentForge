@@ -6,7 +6,7 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU64, Ordering},
 };
-use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewWindowBuilder};
 
 #[derive(Default)]
 struct Backend {
@@ -139,6 +139,13 @@ async fn project_status(
 pub fn run() {
     let app = tauri::Builder::default()
         .manage(DesktopState::default())
+        .setup(|app| {
+            let window = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?;
+            #[cfg(feature = "desktop-smoke")]
+            let window = crate::desktop_smoke::with_probe(window)?;
+            window.build()?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             backend_snapshot,
             project_status,

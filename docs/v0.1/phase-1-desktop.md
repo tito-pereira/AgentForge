@@ -92,8 +92,10 @@ sidecar.
 
 Windows CI builds the desktop and exercises the Rust/Python bridge against the
 checksum-verified private runtime, with repeated start/stop and provider
-sentinels. The original installer test and both OS/Python backend matrices
-remain in place. Ubuntu continues to verify the platform-neutral Python
+sentinels. A separate build with the `desktop-smoke` feature observes real
+DOM values from the local WebView and exercises the project form. The regular
+desktop build excludes this test observer. The original installer test and
+both OS/Python backend matrices remain in place. Ubuntu verifies the Python
 protocol through the package tests. Windows is the desktop build and WebView
 gate.
 

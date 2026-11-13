@@ -21,6 +21,8 @@ $originalLocal = $env:LOCALAPPDATA
 $originalPath = $env:PATH
 $originalOverride = $env:CORINTHOS_SIDECAR_PYTHON
 $originalProject = $env:CORINTHOS_SIDECAR_TEST_PROJECT
+$originalSmokeProject = $env:CORINTHOS_DESKTOP_SMOKE_PROJECT
+$originalSmokeReceipt = $env:CORINTHOS_DESKTOP_SMOKE_RECEIPT
 $desktopProcess = $null
 try {
     $desktopPath = (Resolve-Path -LiteralPath $Desktop).Path
@@ -86,47 +88,18 @@ internal static class Provider {
     [IO.File]::WriteAllText($registry, $fixture)
     $registryHash = (Get-FileHash -LiteralPath $registry).Hash
     $env:CORINTHOS_SIDECAR_PYTHON = $null
-    Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
+    $receipt = Join-Path $root 'desktop-receipt.txt'
+    $env:CORINTHOS_DESKTOP_SMOKE_PROJECT = $project
+    $env:CORINTHOS_DESKTOP_SMOKE_RECEIPT = $receipt
     $desktopProcess = Start-Process -FilePath $desktopPath -WorkingDirectory $root -PassThru -WindowStyle Normal
-    $automation = [Windows.Automation.AutomationElement]
-    $subtree = [Windows.Automation.TreeScope]::Descendants
-    $connected = $false
-    $deadline = [DateTime]::UtcNow.AddSeconds(45)
-    do {
-        Start-Sleep -Milliseconds 500
-        $desktopProcess.Refresh()
-        if ($desktopProcess.HasExited) { throw 'The desktop exited before reporting real backend state.' }
-        if (!$desktopProcess.MainWindowHandle) { continue }
-        $window = $automation::FromHandle($desktopProcess.MainWindowHandle)
-        if (!$window) { continue }
-        $nodes = $window.FindAll($subtree, [Windows.Automation.Condition]::TrueCondition)
-        $names = @($nodes | ForEach-Object { $_.Current.Name })
-        if ($names -match '0\.1\.0' -and $names -match '^v1$' -and
-            $names -match '^Connected$' -and $names -match '^codex$' -and
-            $names -match '^Not yet observed$') {
-            $connected = $true
-            break
-        }
-    } while ([DateTime]::UtcNow -lt $deadline)
-    Assert-Spike $connected 'Could not observe the real backend values in the desktop accessibility tree.'
-    $edit = $nodes | Where-Object { $_.Current.Name -eq 'Project root' -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::Edit } | Select-Object -First 1
-    $button = $nodes | Where-Object { $_.Current.Name -eq 'Check status' -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::Button } | Select-Object -First 1
-    Assert-Spike ($null -ne $edit -and $null -ne $button) 'Project controls were not accessible.'
-    $edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($project)
-    $deadline = [DateTime]::UtcNow.AddSeconds(5)
-    while (!$button.Current.IsEnabled -and [DateTime]::UtcNow -lt $deadline) {
-        Start-Sleep -Milliseconds 100
-    }
-    Assert-Spike $button.Current.IsEnabled 'The project action stayed disabled after entering the path.'
-    $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
-    $deadline = [DateTime]::UtcNow.AddSeconds(15)
-    $shown = $false
-    do {
+    $deadline = [DateTime]::UtcNow.AddSeconds(50)
+    while (![IO.File]::Exists($receipt) -and [DateTime]::UtcNow -lt $deadline) {
+        if ($desktopProcess.HasExited) { throw 'The desktop exited before producing its WebView receipt.' }
         Start-Sleep -Milliseconds 250
-        $names = @($window.FindAll($subtree, [Windows.Automation.Condition]::TrueCondition) | ForEach-Object { $_.Current.Name })
-        if ($names -contains $project -and $names -contains 'No database' -and $names -contains 'Yes') { $shown = $true; break }
-    } while ([DateTime]::UtcNow -lt $deadline)
-    Assert-Spike $shown 'The desktop did not display the initialized project status.'
+    }
+    Assert-Spike ([IO.File]::Exists($receipt)) 'The actual WebView did not produce a receipt.'
+    $observation = [IO.File]::ReadAllText($receipt).Trim()
+    Assert-Spike ($observation -ceq 'pass') "The actual WebView failed its DOM checks: $observation"
     Write-Host 'Desktop WebView displayed real backend version, protocol, provider and project status.'
     Assert-Spike ($desktopProcess.CloseMainWindow()) 'Could not request desktop shutdown.'
     Assert-Spike ($desktopProcess.WaitForExit(15000) -and $desktopProcess.ExitCode -eq 0) 'Desktop shutdown did not complete.'
@@ -155,5 +128,7 @@ internal static class Provider {
     $env:PATH = $originalPath
     $env:CORINTHOS_SIDECAR_PYTHON = $originalOverride
     $env:CORINTHOS_SIDECAR_TEST_PROJECT = $originalProject
+    $env:CORINTHOS_DESKTOP_SMOKE_PROJECT = $originalSmokeProject
+    $env:CORINTHOS_DESKTOP_SMOKE_RECEIPT = $originalSmokeReceipt
     if ([IO.Directory]::Exists($root)) { Remove-SetupTree $root $parent }
 }

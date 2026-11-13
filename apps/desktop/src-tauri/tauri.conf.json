@@ -13,6 +13,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "Corinthos Desktop Spike",
         "width": 1000,
         "height": 740,
