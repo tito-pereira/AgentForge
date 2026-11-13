@@ -28,7 +28,7 @@ _PROVIDERS = SUPPORTED_PROVIDERS
 _MAX_PROFILE = 128 * 1024
 
 
-def _root(value, *, create=False):
+def _root(value, *, create=False, missing_ok=False):
     raw = Path(value)
     if not raw.is_absolute():
         raw = Path.cwd() / raw
@@ -41,6 +41,8 @@ def _root(value, *, create=False):
             if create:
                 part.mkdir(mode=0o700)
                 info = part.lstat()
+            elif missing_ok:
+                return None
             else:
                 raise IntegrityError("The authorized workspace does not exist.") from None
         if is_link(info) or not stat.S_ISDIR(info.st_mode):

@@ -16,6 +16,7 @@ def main(argv: list[str] | None = None) -> int:
         epilog="Run corinthos for Home or corinthos . to open the current project.",
     )
     parser.add_argument("--version", action="version", version=f"corinthos {__version__}")
+    from corinthos.application.cli import configure as configure_status
     from corinthos.bootstrap import add_cli as configure_bootstrap
     from corinthos.lifecycle.playtest_cli import add_cli as configure_playtest
     from corinthos.lifecycle.version_cli import add_cli as configure_version
@@ -33,6 +34,9 @@ def main(argv: list[str] | None = None) -> int:
     configure_build(commands)
     configure_playtest(commands)
     configure_version(commands)
+    configure_status(
+        commands.add_parser("status", help="Inspect known state without making changes.")
+    )
     if not argv or argv == ["."]:
         from corinthos.app_shell import run_shell
 

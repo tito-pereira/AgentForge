@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Corinthos Desktop Spike",
+  "version": "0.1.0",
+  "identifier": "org.corinthos.desktop.spike",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "create": false,
+        "title": "Corinthos Desktop Spike",
+        "width": 1000,
+        "height": 740,
+        "minWidth": 620,
+        "minHeight": 480
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+      "capabilities": [
+        "status-panel"
+      ]
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}

@@ -173,3 +173,52 @@ jobs:
       - name: Install, exercise, reinstall and uninstall in a disposable user scope
         shell: powershell
         run: .\platform\windows\test-install.ps1
+  desktop:
+    name: Verify Windows desktop spike
+    runs-on: windows-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record tested commit
+        run: git rev-parse HEAD
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.2'
+          package-manager-cache: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14.10'
+      - name: Verify frontend and build Tauri
+        working-directory: apps/desktop
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:RUSTUP_TOOLCHAIN = '1.99.1'
+          "RUSTUP_TOOLCHAIN=1.99.1" >> $env:GITHUB_ENV
+          node --version
+          npm --version
+          rustc --version
+          cargo --version
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run tauri -- build --no-bundle -- --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test Rust bridge supervision
+        run: |
+          $env:CORINTHOS_SIDECAR_TEST_PYTHON = (Get-Command python.exe -ErrorAction Stop).Source
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --no-default-features
+      - name: Build the WebView test observer
+        run: cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --release --features desktop-smoke,custom-protocol
+      - name: Verify desktop with the private Python runtime
+        shell: powershell
+        run: .\apps\desktop\test-windows.ps1 -Desktop .\apps\desktop\src-tauri\target\release\corinthos-desktop.exe
