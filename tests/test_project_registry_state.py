@@ -15,11 +15,12 @@ from corinthos.contracts import (
     ContractError,
     ContractStore,
     ContractType,
+    IntegrityError,
     PublishContext,
     approval_request,
 )
 from corinthos.lifecycle.repository import LifecycleRepository
-from corinthos.project_registry import ProjectRegistryService
+from corinthos.project_registry import ProjectRegistryService, _records
 from corinthos.project_state import ProjectStateService
 from corinthos.work import WorkService
 
@@ -91,6 +92,45 @@ def test_v1_recents_upgrade_on_explicit_access_and_keep_missing_projects(user, t
     with pytest.raises(ContractError):
         registry.remember(missing)
     assert not missing.exists() and path.read_bytes() == migrated
+
+
+_UNSUPPORTED_VERSIONS = [-1, 0, 3, 99, True, 2.0, "2", None]
+
+
+@pytest.mark.parametrize("version", _UNSUPPORTED_VERSIONS)
+def test_registry_parser_rejects_unknown_versions_before_interpreting_entries(tmp_path, version):
+    root = str(tmp_path / "project")
+    for entry in (
+        {"path": root, "last_opened_at": _ACCESS},
+        {"root": root, "last_accessed_at": _ACCESS},
+    ):
+        with pytest.raises(IntegrityError, match="Unsupported Project Registry version"):
+            _records({"version": version, "projects": [entry]})
+
+
+@pytest.mark.parametrize("version", _UNSUPPORTED_VERSIONS)
+def test_registry_rejects_unknown_file_versions_without_rewriting(user, tmp_path, version):
+    root = tmp_path / "project"
+    initialize(root)
+    user.mkdir(exist_ok=True)
+    path = user / "recent-projects.json"
+    document = {
+        "version": version,
+        "projects": [{"root": str(root), "last_accessed_at": _ACCESS}],
+    }
+    original = (json.dumps(document, indent=2) + "\n").encode("utf-8")
+    path.write_bytes(original)
+    registry = ProjectRegistryService()
+
+    for operation in (
+        registry.list,
+        registry.paths,
+        lambda: registry.last_accessed_at(str(root)),
+        lambda: registry.remember(root),
+    ):
+        with pytest.raises(IntegrityError):
+            operation()
+        assert path.read_bytes() == original
 
 
 def test_registry_serializes_explicit_updates_and_keeps_prior_entries(user, tmp_path):

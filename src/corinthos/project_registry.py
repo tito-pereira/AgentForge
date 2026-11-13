@@ -37,6 +37,9 @@ def display_name(root: str) -> str:
 
 
 def _records(document: dict) -> list[dict[str, str]]:
+    version = document.get("version")
+    if type(version) is not int or version not in (1, 2):
+        raise IntegrityError("Unsupported Project Registry version.")
     projects = document.get("projects")
     if (
         document.keys() != {"version", "projects"}
@@ -45,7 +48,7 @@ def _records(document: dict) -> list[dict[str, str]]:
     ):
         raise IntegrityError("The saved Project Registry is invalid.")
     root_key, date_key = (
-        ("path", "last_opened_at") if document["version"] == 1 else ("root", "last_accessed_at")
+        ("path", "last_opened_at") if version == 1 else ("root", "last_accessed_at")
     )
     records = []
     roots = set()
