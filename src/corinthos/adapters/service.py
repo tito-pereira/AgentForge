@@ -23,7 +23,14 @@ from corinthos.contracts.model import ID_PATTERN, canonical_json
 from corinthos.standard import load_standard
 
 from .discovery import ordinary_windows_executable, windows_codex_command, windows_path_executable
-from .model import AgentResult, Capabilities, ContextInput, PreparedContext
+from .model import (
+    AgentResult,
+    Capabilities,
+    ContextInput,
+    PreparedContext,
+    SessionPlan,
+    SessionPlanError,
+)
 from .process import run_process
 from .process_control import start_process
 from .providers import PROVIDERS, session_id
@@ -159,17 +166,22 @@ class AdapterManager:
         return self._selection(provider)[0]
 
     @staticmethod
-    def _help(command, arguments):
+    def _help(command, arguments, *, deadline=None, cancel=None, owner_fd=None):
         try:
             managed = start_process(
                 [*command, *arguments],
+                owner_fd=owner_fd,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 shell=False,
                 env=os.environ.copy(),
             )
-        except OSError:
+        except OSError as error:
+            if deadline is not None and getattr(error, "cleanup_confirmed", True) is False:
+                raise SessionPlanError(
+                    "PROBE_CLEANUP_UNCONFIRMED", cleanup_confirmed=False
+                ) from None
             return None
         process = managed.process
         chunks, stopped = queue.Queue(maxsize=16), threading.Event()
@@ -192,10 +204,11 @@ class AdapterManager:
         reader = threading.Thread(target=read, daemon=True)
         reader.start()
         output, ended, failed = bytearray(), False, False
-        deadline = monotonic() + 10
+        session_probe = deadline is not None
+        deadline = min(deadline, monotonic() + 10) if session_probe else monotonic() + 10
         try:
             while not ended or process.poll() is None:
-                if monotonic() >= deadline:
+                if monotonic() >= deadline or (cancel is not None and cancel.is_set()):
                     failed = True
                     break
                 try:
@@ -215,13 +228,18 @@ class AdapterManager:
             if cleanup:
                 process.stdout.close()
             reader.join(timeout=0.2)
-        if failed or not cleanup or process.returncode:
+        if not cleanup and session_probe:
+            raise SessionPlanError("PROBE_CLEANUP_UNCONFIRMED", cleanup_confirmed=False)
+        if failed or not cleanup or managed.returncode:
             return None
         return output.decode("utf-8", errors="replace")
 
     def discover(self, provider):
-        self._provider(provider)
-        command, source, expected_version, reason = self._selection(provider)
+        return self._discover(provider, self._selection(provider))
+
+    def _discover(self, provider, selection, *, probe_options=None):
+        implementation = self._provider(provider)
+        command, source, expected_version, reason = selection
         details = {"discovery": source, "executable": command[0] if command else None}
         if command is None:
             return Capabilities(
@@ -230,8 +248,17 @@ class AdapterManager:
                 reason=reason,
                 **details,
             )
-        reported = self._help(command, ("--version",))
-        general = self._help(command, ("--help",))
+
+        def help_text(arguments):
+            if probe_options and (
+                monotonic() >= probe_options["deadline"]
+                or (probe_options["cancel"] is not None and probe_options["cancel"].is_set())
+            ):
+                return None
+            return self._help(command, arguments, **(probe_options or {}))
+
+        reported = help_text(("--version",))
+        general = help_text(("--help",))
         if reported is None or general is None:
             return Capabilities(
                 provider, False, reason="The executable version/help probe failed.", **details
@@ -255,22 +282,7 @@ class AdapterManager:
                 reason="The executable did not report a recognized version.",
                 **details,
             )
-        if provider == "codex":
-            help_text = self._help(command, ("exec", "--help")) or ""
-            resume_help = self._help(command, ("exec", "resume", "--help")) or ""
-            streaming = "--json" in help_text
-            stdin = "stdin" in help_text
-            resume = (
-                "--json" in resume_help and "SESSION_ID" in resume_help and "stdin" in resume_help
-            )
-            read_only = "--sandbox" in general and "read-only" in general
-        else:
-            streaming = (
-                "--output-format" in general and "stream-json" in general and "--verbose" in general
-            )
-            stdin = "--print" in general or "-p" in general
-            resume = "--resume" in general
-            read_only = "--tools" in general and "--disallowedTools" in general
+        streaming, stdin, resume, read_only = implementation.capabilities(help_text, general)
         return Capabilities(
             provider,
             bool(streaming and stdin) if source == "npm" else True,
@@ -434,10 +446,7 @@ class AdapterManager:
             if actual_workspace != workspace:
                 raise IntegrityError("Instruction preparation and task workspaces differ.")
             context_digest = sha256(self._prompt(value).encode("utf-8")).hexdigest()
-        name = "CLAUDE.md" if provider == "claude" else "AGENTS.md"
-        if provider == "codex" and (workspace / "AGENTS.override.md").exists():
-            name = "AGENTS.override.md"
-        path = workspace / name
+        path = self._provider(provider).instruction_path(workspace)
         original, mode = _read_instructions(path)
         newline = b"\r\n" if b"\r\n" in original else b"\n"
         body = (
@@ -500,6 +509,144 @@ class AdapterManager:
             finally:
                 temporary.unlink(missing_ok=True)
         return PreparedContext(path, self.standard_sha256, context_digest, changed)
+
+    def _session_binding(self, provider, workspace, command, prompt, read_only):
+        path = self._provider(provider).instruction_path(workspace)
+        contents, _ = _read_instructions(path)
+        try:
+            executable = Path(command[0])
+            info = executable.stat()
+        except OSError:
+            raise SessionPlanError("EXECUTABLE_UNAVAILABLE") from None
+        data = {
+            "provider": provider,
+            "command": list(command),
+            "executable_identity": [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns],
+            "workspace": str(workspace),
+            "instruction_file": path.name,
+            "instruction_sha256": sha256(contents).hexdigest(),
+            "standard_sha256": self.standard_sha256,
+            "prompt_sha256": sha256(prompt.encode("utf-8")).hexdigest(),
+            "read_only": read_only,
+        }
+        # Use only the digest for durable recovery; command and prompt stay in memory.
+        return sha256(canonical_json(data).encode("utf-8")).hexdigest()
+
+    def _session_input(self, provider, root, prompt, read_only):
+        if type(read_only) is not bool:
+            raise IntegrityError("Select a valid read-only execution policy.")
+        workspace = _directory(root)
+        full_prompt = self._prompt(
+            {"objective": _text(prompt), "authorized_workspace": str(workspace)},
+            diagnostic=read_only,
+        )
+        selection = self._selection(provider)
+        if selection[0] is None:
+            raise SessionPlanError("EXECUTABLE_UNAVAILABLE")
+        return workspace, full_prompt, selection
+
+    def session_binding(self, provider, root, *, prompt, read_only=False):
+        """Check current recovery inputs without probing or preparing a provider."""
+        workspace, full_prompt, selection = self._session_input(provider, root, prompt, read_only)
+        return self._session_binding(provider, workspace, selection[0], full_prompt, read_only)
+
+    def session_plan(
+        self,
+        provider,
+        root,
+        *,
+        prompt,
+        read_only=False,
+        cancel=None,
+        timeout=60,
+        owner_fd=None,
+        prepare=True,
+        expected_binding_sha256=None,
+    ) -> SessionPlan:
+        """Resolve only the explicitly selected provider and bind its execution input."""
+        if type(timeout) not in (int, float) or not isfinite(timeout) or not 0 < timeout <= 86_400:
+            raise IntegrityError("Use a finite positive invocation timeout of at most one day.")
+        workspace, full_prompt, selection = self._session_input(provider, root, prompt, read_only)
+        command = selection[0]
+        binding = self._session_binding(provider, workspace, command, full_prompt, read_only)
+        if expected_binding_sha256 is not None and binding != expected_binding_sha256:
+            raise SessionPlanError("EXECUTION_BINDING_CHANGED")
+        deadline = monotonic() + timeout
+        caps = self._discover(
+            provider,
+            selection,
+            probe_options={"deadline": deadline, "cancel": cancel, "owner_fd": owner_fd},
+        )
+        if cancel is not None and cancel.is_set():
+            raise SessionPlanError("CANCEL_REQUESTED")
+        if monotonic() >= deadline:
+            raise SessionPlanError("TIME_LIMIT")
+        if not caps.available:
+            raise SessionPlanError("EXECUTABLE_UNAVAILABLE")
+        if not caps.json_events or not caps.stdin_prompt or (read_only and not caps.read_only):
+            raise SessionPlanError("REQUIRED_CAPABILITY_UNAVAILABLE")
+        if binding != self._session_binding(provider, workspace, command, full_prompt, read_only):
+            raise SessionPlanError("EXECUTION_BINDING_CHANGED")
+        if prepare:
+            self.prepare(provider, workspace)
+            binding = self._session_binding(provider, workspace, command, full_prompt, read_only)
+        return SessionPlan(workspace, caps, binding, tuple(command), full_prompt, read_only)
+
+    def run_session(
+        self,
+        plan,
+        *,
+        task_id,
+        attempt_id,
+        timeout,
+        cancel,
+        on_event,
+        on_start=None,
+        resume_session_id=None,
+        owner_fd=None,
+    ) -> AgentResult:
+        """Run a supervisor-owned provider using the existing native transport."""
+        if not isinstance(plan, SessionPlan):
+            raise IntegrityError("Native session execution requires a prepared local plan.")
+        caps = plan.capabilities
+        implementation = self._provider(caps.provider)
+        if type(timeout) not in (int, float) or not isfinite(timeout) or not 0 < timeout <= 86_400:
+            raise IntegrityError("Use a finite positive invocation timeout of at most one day.")
+        if resume_session_id is not None:
+            if not caps.native_resume:
+                raise SessionPlanError("REQUIRED_CAPABILITY_UNAVAILABLE")
+            try:
+                resume_session_id = session_id(resume_session_id)
+            except ValueError:
+                raise IntegrityError(
+                    "Native resume requires an exact observed session UUID."
+                ) from None
+        if cancel is not None and cancel.is_set():
+            return AgentResult(
+                caps.provider, "CANCELLED", task_id, attempt_id, version=caps.version
+            )
+        if plan.binding_sha256 != self._session_binding(
+            caps.provider, plan.workspace, plan.command, plan.prompt, plan.read_only
+        ):
+            raise SessionPlanError("EXECUTION_BINDING_CHANGED")
+        return run_process(
+            implementation,
+            plan.command,
+            plan.prompt,
+            plan.workspace,
+            capabilities=caps,
+            task_id=task_id,
+            attempt_id=attempt_id,
+            timeout=timeout,
+            cancel=cancel,
+            on_event=None,
+            resume=resume_session_id,
+            read_only=plan.read_only,
+            on_session_event=on_event,
+            on_start=on_start,
+            owner_fd=owner_fd,
+            session=True,
+        )
 
     def _invoke(
         self,

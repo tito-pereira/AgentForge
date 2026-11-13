@@ -55,11 +55,13 @@ def projects_list(*, limit=DEFAULT_LIMIT, offset=0):
 def project_summary(root):
     from corinthos.project_state import ProjectStateService
 
-    return asdict(ProjectStateService().summary(root))
+    result = asdict(ProjectStateService().summary(root))
+    result.pop("sessions")
+    return result
 
 
 def project_open(root):
-    """Record explicit access, migrating a verified v6 project before returning its summary."""
+    """Record explicit access, migrating a verified older project before returning its summary."""
     from corinthos.project_registry import ProjectRegistryService
 
     status = project_status(root)
@@ -67,7 +69,7 @@ def project_open(root):
         raise StoreError("The project directory is unavailable.")
     if status.storage in {"INVALID", "UNVERIFIED"}:
         raise StoreError("The project state is unavailable.")
-    if status.schema_version == 6:
+    if status.schema_version in {6, 7}:
         ContractStore(status.root)
     ProjectRegistryService().remember(status.root)
     return project_summary(status.root)

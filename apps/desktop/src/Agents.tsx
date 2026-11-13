@@ -1,0 +1,297 @@
+// SPDX-License-Identifier: MPL-2.0
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { bridge, type AgentSession, type ProviderStatus, type SessionEvent, type WorkNode } from "./bridge";
+
+const activeStates = ["STARTING", "RUNNING", "CANCELLING"];
+const defaultTimeout = "120";
+const eventLimit = 10;
+const visible = (value: string | number | null) => value ?? "UNKNOWN";
+
+function SessionFacts({ session }: { session: AgentSession }) {
+  const fields = {
+    State: session.state,
+    "Work Item": session.work_item_id,
+    Provider: session.provider,
+    "Provider version": session.provider_version,
+    Model: session.model,
+    Created: session.created_at,
+    Started: session.started_at,
+    Updated: session.updated_at,
+    Finished: session.finished_at,
+    "Input tokens": session.input_tokens,
+    "Output tokens": session.output_tokens,
+    "Cached tokens": session.cached_tokens,
+    "Duration (ms)": session.duration_ms,
+    "Reported cost": session.reported_cost === null
+      ? null
+      : [session.reported_cost, session.reported_cost_currency].filter(Boolean).join(" "),
+  };
+  return (
+    <dl className="facts">
+      {Object.entries(fields).map(([name, value]) => (
+        <div key={name}><dt>{name}</dt><dd>{visible(value)}</dd></div>
+      ))}
+    </dl>
+  );
+}
+
+export function Agents({ root, methods, providers }: {
+  root: string;
+  methods: string[];
+  providers: ProviderStatus[];
+}) {
+  const [sessions, setSessions] = useState<AgentSession[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [work, setWork] = useState<WorkNode[]>([]);
+  const [detail, setDetail] = useState<AgentSession | null>(null);
+  const [events, setEvents] = useState<SessionEvent[]>([]);
+  const [cursor, setCursor] = useState(0);
+  const [moreEvents, setMoreEvents] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [workId, setWorkId] = useState("");
+  const [provider, setProvider] = useState("");
+  const [timeout, setTimeoutSeconds] = useState(defaultTimeout);
+  const [instruction, setInstruction] = useState("");
+  const [recoveryInstruction, setRecoveryInstruction] = useState("");
+  const [readOnly, setReadOnly] = useState(false);
+  const inFlight = useRef(false);
+  const canStart = methods.includes("session.start");
+  const canGet = methods.includes("session.get");
+  const canReadEvents = methods.includes("session.events");
+
+  async function loadSessions(target: number) {
+    const page = await bridge.sessions(root, target);
+    setSessions(page.sessions);
+    setOffset(target);
+    setNextOffset(page.next_offset);
+  }
+
+  async function loadEvents(sessionId: string, after: number) {
+    if (!canReadEvents) return;
+    const page = await bridge.sessionEvents(root, sessionId, after, eventLimit);
+    setEvents((previous) => [...(after === 0 ? [] : previous), ...page.events].slice(-eventLimit));
+    setCursor(page.next_after_sequence);
+    setMoreEvents(page.events.length === eventLimit);
+  }
+
+  async function select(session: AgentSession) {
+    setDetail(session);
+    setRecoveryInstruction("");
+    setEvents([]);
+    setCursor(0);
+    setMoreEvents(false);
+    await loadEvents(session.session_id, 0);
+  }
+
+  async function run(action: () => Promise<void>, message: string) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+    } catch {
+      setError(message);
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    inFlight.current = true;
+    async function load() {
+      try {
+        const page = await bridge.sessions(root, 0);
+        if (!mounted) return;
+        setSessions(page.sessions);
+        setNextOffset(page.next_offset);
+        if (canStart && methods.includes("work.tree")) {
+          const result = await bridge.workTree(root, 0);
+          if (mounted) setWork(result.nodes);
+        }
+      } catch {
+        if (mounted) setError("Could not load the Agents view. Refresh to retry.");
+      } finally {
+        if (mounted) {
+          inFlight.current = false;
+          setLoading(false);
+        }
+      }
+    }
+    void load();
+    return () => { mounted = false; };
+  }, [root, methods, canStart]);
+
+  const shouldPoll = Boolean(detail && activeStates.includes(detail.state))
+    || sessions.some((session) => activeStates.includes(session.state));
+
+  useEffect(() => {
+    if (!shouldPoll) return;
+    let mounted = true;
+    const timer = setInterval(async () => {
+      if (inFlight.current) return;
+      inFlight.current = true;
+      try {
+        const page = await bridge.sessions(root, offset);
+        if (!mounted) return;
+        setSessions(page.sessions);
+        setNextOffset(page.next_offset);
+        if (detail && canGet) {
+          const current = await bridge.sessionGet(root, detail.session_id);
+          if (!mounted) return;
+          setDetail(current);
+          await loadEvents(current.session_id, cursor);
+        }
+      } catch {
+        if (mounted) setError("Could not refresh the active sessions. Refresh to retry.");
+      } finally {
+        inFlight.current = false;
+      }
+    }, 1000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [root, offset, detail?.session_id, shouldPoll, cursor, canGet, canReadEvents]);
+
+  async function refresh(target: number) {
+    await run(async () => {
+      await loadSessions(target);
+      if (detail && canGet) {
+        const value = await bridge.sessionGet(root, detail.session_id);
+        setDetail(value);
+        await loadEvents(value.session_id, cursor);
+      }
+    }, "Could not refresh sessions. Try again.");
+  }
+
+  async function start(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canStart || !provider || !workId.trim()) return;
+    await run(async () => {
+      const next = await bridge.sessionStart(root, {
+        provider,
+        work_item_id: workId.trim(),
+        timeout_seconds: Number(timeout),
+        read_only: readOnly,
+        ...(instruction.trim() ? { instruction } : {}),
+      });
+      setInstruction("");
+      await select(next);
+      await loadSessions(0);
+    }, "Could not confirm the session start. Refresh sessions before trying again.");
+  }
+
+  async function actOnSession(session: AgentSession, recover: boolean) {
+    await run(async () => {
+      const next = recover
+        ? await bridge.sessionRecover(root, session.session_id, recoveryInstruction)
+        : await bridge.sessionCancel(root, session.session_id, session.run_generation);
+      setDetail(next);
+      await loadEvents(next.session_id, cursor);
+      await loadSessions(offset);
+    }, recover
+      ? "Could not recover this session. Verify the original instructions or use the terminal."
+      : "Could not confirm cancellation. Refresh the session before trying again.");
+  }
+
+  return (
+    <div className="work-items agents">
+      <div className="section-heading">
+        <h3>Agent Sessions</h3>
+        <button type="button" disabled={busy || loading} onClick={() => void refresh(offset)}>Refresh sessions</button>
+      </div>
+      {loading && <p role="status">Loading Agent Sessions…</p>}
+      {error && <p role="alert">{error}</p>}
+      {!loading && !error && sessions.length === 0 && <p>No Agent Sessions on this page.</p>}
+      <ul className="work-tree session-list">
+        {sessions.map((session) => (
+          <li key={session.session_id} data-state={session.state}>
+            <button type="button" aria-pressed={detail?.session_id === session.session_id} disabled={!canGet || busy}
+              onClick={() => void run(async () => select(await bridge.sessionGet(root, session.session_id)), "Could not load this session.")}
+            >{session.session_id}</button>
+            <span>{session.provider} · {session.state} · {session.work_item_id}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="field-row">
+        {offset > 0 && <button type="button" disabled={busy} onClick={() => void refresh(0)}>First sessions</button>}
+        {nextOffset !== null && <button type="button" disabled={busy} onClick={() => void refresh(nextOffset)}>More sessions</button>}
+      </div>
+      {detail && (
+        <div className="work-selection session-detail">
+          <h4>{detail.session_id}</h4>
+          <SessionFacts session={detail} />
+          <div className="field-row">
+            {detail.can_cancel && methods.includes("session.cancel") && (
+              <button type="button" disabled={busy} onClick={() => void actOnSession(detail, false)}>Cancel session</button>
+            )}
+            {detail.can_recover && methods.includes("session.recover") && (
+              <form onSubmit={(event) => { event.preventDefault(); void actOnSession(detail, true); }}>
+                <label htmlFor="session-recovery-instruction">Original instructions (if supplied)</label>
+                <input id="session-recovery-instruction" maxLength={4096} disabled={busy}
+                  value={recoveryInstruction} onChange={(event) => setRecoveryInstruction(event.target.value)} />
+                <button type="submit" disabled={busy}>Recover session</button>
+              </form>
+            )}
+          </div>
+          {detail.cleanup_unconfirmed && <p>Process cleanup could not be confirmed.</p>}
+          {detail.state === "INTERRUPTED" && !detail.can_recover && (
+            <p>Native recovery is unavailable for this session.</p>
+          )}
+          {canReadEvents && (
+            <>
+              <h4>Recent events</h4>
+              {events.length === 0 && <p>No events recorded.</p>}
+              <ol className="session-events">
+                {events.map((event) => (
+                  <li key={event.sequence}>
+                    <strong>{event.kind}</strong> <time>{event.occurred_at}</time>
+                    {Object.keys(event.payload).length > 0 && <code>{JSON.stringify(event.payload)}</code>}
+                  </li>
+                ))}
+              </ol>
+              {moreEvents && <button type="button" disabled={busy} onClick={() => void run(
+                () => loadEvents(detail.session_id, cursor),
+                "Could not load more session events.",
+              )}>More events</button>}
+            </>
+          )}
+        </div>
+      )}
+      {canStart && (
+        <form className="work-form" onSubmit={(event) => void start(event)}>
+          <h4>Start an Agent Session</h4>
+          <fieldset disabled={loading || busy}>
+            <label htmlFor="session-work">Work Item ID</label>
+            <input id="session-work" list="session-work-items" required maxLength={128}
+              value={workId} onChange={(event) => setWorkId(event.target.value)} />
+            <datalist id="session-work-items">
+              {work.map((item) => <option key={item.work_item_id} value={item.work_item_id}>{item.objective}</option>)}
+            </datalist>
+            <label htmlFor="session-provider">Provider</label>
+            <select id="session-provider" required value={provider} onChange={(event) => setProvider(event.target.value)}>
+              <option value="">Select provider</option>
+              {providers.filter((choice) => choice.supported).map((choice) => <option key={choice.provider}>{choice.provider}</option>)}
+            </select>
+            <label htmlFor="session-timeout">Timeout (seconds)</label>
+            <input id="session-timeout" type="number" min={1} max={3600} step={1} required
+              value={timeout} onChange={(event) => setTimeoutSeconds(event.target.value)} />
+            <label htmlFor="session-instruction">Instructions (optional)</label>
+            <textarea id="session-instruction" value={instruction} maxLength={4096}
+              onChange={(event) => setInstruction(event.target.value)} />
+            <label className="checkbox">
+              <input type="checkbox" checked={readOnly} onChange={(event) => setReadOnly(event.target.checked)} /> Read-only execution
+            </label>
+            <button type="submit" disabled={!provider || !workId.trim()}>Start session</button>
+          </fieldset>
+        </form>
+      )}
+    </div>
+  );
+}

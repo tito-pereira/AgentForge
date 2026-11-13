@@ -3,14 +3,14 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import type { BackendSnapshot, ProjectEntry, ProjectSummary, WorkItem } from "./bridge";
+import type { AgentSession, BackendSnapshot, ProjectEntry, ProjectSummary, WorkItem } from "./bridge";
 
 const { invoke, listen } = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen }));
 
 const methods = ["projects.list", "project.summary", "project.open", "work.tree", "work.get", "work.create", "work.status"];
-const ready: BackendSnapshot = {
+const ready: Extract<BackendSnapshot, { connection: "ready" }> = {
   connection: "ready",
   handshake: { protocol_version: 2, version: "0.1.0", methods },
   providers: { providers: [{
@@ -197,5 +197,132 @@ describe("desktop Home and Projects", () => {
     expect(host.textContent).toContain("Project browsing is unavailable");
     expect(host.querySelector<HTMLInputElement>("#project-root")?.disabled).toBe(true);
     expect(invoke.mock.calls).toEqual([["backend_snapshot"]]);
+  });
+});
+
+describe("desktop Agents", () => {
+  const sessionMethods = ["session.list", "session.get", "session.events", "session.start", "session.cancel", "session.recover"];
+  const session: AgentSession = {
+    session_id: "session_1", work_item_id: item.work_item_id, project_id: "project",
+    provider: "codex", provider_version: null, model: null, state: "RUNNING", run_generation: 1,
+    started_at: "2026-01-02T00:00:00Z", created_at: "2026-01-02T00:00:00Z",
+    updated_at: "2026-01-02T00:00:00Z", finished_at: null,
+    input_tokens: 0, output_tokens: null, cached_tokens: null, duration_ms: null,
+    reported_cost: null, reported_cost_currency: null, timeout_seconds: 120,
+    read_only: false, can_cancel: true, can_recover: false, cleanup_unconfirmed: false,
+  };
+
+  function setup(initial: AgentSession[]) {
+    const rows = initial.slice();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "backend_snapshot") {
+        return { ...ready, handshake: { ...ready.handshake, methods: [...methods, ...sessionMethods] } };
+      }
+      switch (payload.method) {
+        case "projects.list": return { projects: [legacy], next_offset: null };
+        case "project.open": return { ...summary, schema_version: 8 };
+        case "work.tree": return { nodes: [{ ...item, depth: 0 }], next_offset: null };
+        case "session.list": return { sessions: rows.slice(), next_offset: null };
+        case "session.get": return rows.find((row) => row.session_id === payload.params.session_id);
+        case "session.events": return {
+          events: payload.params.after_sequence ? [] : [{
+            sequence: 1, occurred_at: session.created_at, kind: "OUTPUT",
+            payload: { text: "<b>Provider output</b>" }, native_kind: "item.completed",
+          }], next_after_sequence: payload.params.after_sequence || 1,
+        };
+        case "session.start": rows.unshift(session); return session;
+        case "session.cancel":
+          rows[0] = { ...session, state: "CANCELLED", can_cancel: false };
+          return rows[0];
+        case "session.recover": {
+          const index = rows.findIndex((row) => row.session_id === payload.params.session_id);
+          rows[index] = { ...rows[index], state: "STARTING", can_recover: false };
+          return rows[index];
+        }
+        default: throw new Error("Unexpected method");
+      }
+    });
+  }
+
+  const requested = () => invoke.mock.calls.map(([_command, payload]) => payload?.method);
+
+  it("reads list, detail, and normalized events without probing providers", async () => {
+    setup([session]);
+    await render();
+    await click("Open Project");
+    expect(requested()).not.toContain("session.list");
+    await click("Agents");
+    expect(host.querySelector(".session-list")?.textContent).toContain("RUNNING");
+    await click(session.session_id);
+    expect(host.querySelector(".session-detail")?.textContent).toContain("Input tokens0");
+    expect(host.querySelector(".session-detail")?.textContent).toContain("ModelUNKNOWN");
+    expect(host.querySelector(".session-events")?.textContent).toContain("<b>Provider output</b>");
+    expect(host.querySelector(".session-events b")).toBeNull();
+    expect(requested().filter((method) => method?.startsWith("session."))).toEqual([
+      "session.list", "session.get", "session.events",
+    ]);
+    expect(requested().some((method) => method?.startsWith("provider"))).toBe(false);
+  });
+
+  it("starts and cancels explicitly through the Rust bridge", async () => {
+    setup([]);
+    await render();
+    await click("Open Project");
+    await click("Agents");
+    expect(host.textContent).toContain("No Agent Sessions");
+    await field("#session-work", item.work_item_id);
+    await field("#session-provider", "codex");
+    await field("#session-timeout", "3");
+    await field("#session-instruction", "Write a unit test.");
+    await click("Start session");
+    expect(invoke.mock.calls).toContainEqual(["workspace_request", {
+      method: "session.start", params: {
+        root: legacy.root, provider: "codex", work_item_id: item.work_item_id,
+        timeout_seconds: 3, read_only: false, instruction: "Write a unit test.",
+      },
+    }]);
+    await click("Cancel session");
+    expect(invoke.mock.calls).toContainEqual(["workspace_request", {
+      method: "session.cancel", params: { root: legacy.root, session_id: session.session_id, generation: 1 },
+    }]);
+    expect(host.querySelector(".session-detail")?.textContent).toContain("StateCANCELLED");
+    expect(host.textContent).not.toContain("Cancel session");
+  });
+
+  it("offers only eligible recovery and can bind original instructions", async () => {
+    const interrupted = { ...session, state: "INTERRUPTED", can_cancel: false };
+    const recoverable = { ...interrupted, session_id: "recoverable", can_recover: true };
+    setup([interrupted, recoverable]);
+    await render();
+    await click("Open Project");
+    await click("Agents");
+    await click(session.session_id);
+    expect(host.textContent).toContain("Native recovery is unavailable");
+    expect(host.textContent).not.toContain("Recover session");
+    await click(recoverable.session_id);
+    await field("#session-recovery-instruction", "Original instruction");
+    await click("Recover session");
+    expect(invoke.mock.calls).toContainEqual(["workspace_request", {
+      method: "session.recover", params: {
+        root: legacy.root, session_id: recoverable.session_id, instruction: "Original instruction",
+      },
+    }]);
+    expect(host.querySelector(".session-detail")?.textContent).toContain("StateSTARTING");
+  });
+
+  it("shows bounded failures and unmounts on disconnect", async () => {
+    setup([]);
+    await render();
+    await click("Open Project");
+    let reject: (error: Error) => void = () => {};
+    invoke.mockReturnValueOnce(new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }));
+    await click("Agents");
+    expect(host.textContent).toContain("Loading Agent Sessions");
+    await act(async () => reject(new Error("private provider error")));
+    expect(host.textContent).toContain("Could not load the Agents view");
+    expect(host.textContent).not.toContain("private provider error");
+    await act(async () => lifecycle({ payload: { method: "backend.disconnected" } }));
+    expect(host.textContent).toContain("Disconnected");
+    expect(host.querySelector(".agents")).toBeNull();
   });
 });

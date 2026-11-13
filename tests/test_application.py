@@ -50,18 +50,20 @@ def test_project_status_is_read_only_for_missing_ordinary_and_bootstrap(tmp_path
     assert not (root / ".corinthos/state.db").exists()
 
 
-@pytest.mark.parametrize("marker", [1, 6, 7, 8, None])
+@pytest.mark.parametrize("marker", [1, 6, 7, 8, 9, None])
 def test_project_status_checks_existing_storage_without_creating_or_migrating(tmp_path, marker):
     if marker == 6:
         tmp_path = _historical_state(tmp_path, "5a2a8e682b1389d96318feb636b8f52828f943d3", 6)
+    if marker == 7:
+        tmp_path = _historical_state(tmp_path, "5d913b7b18ef720f963e7614046a4062a4b2367f", 7)
     private = tmp_path / ".corinthos"
     private.mkdir(exist_ok=True)
     database = private / "state.db"
-    if marker == 7:
+    if marker == 8:
         ContractStore(tmp_path)
     elif marker is None:
         database.write_bytes(b"not SQLite")
-    elif marker != 6:
+    elif marker not in {6, 7}:
         with closing(sqlite3.connect(database)) as connection:
             for statement in storage._MIGRATION_V1:
                 connection.execute(statement)
@@ -71,10 +73,10 @@ def test_project_status_checks_existing_storage_without_creating_or_migrating(tm
     before = _snapshot(tmp_path)
     result = project_status(tmp_path)
     assert result.is_directory
-    if marker in {1, 6, 7}:
+    if marker in {1, 6, 7, 8}:
         assert (result.initialized, result.storage, result.schema_version) == (
             True,
-            "CURRENT" if marker == 7 else "LEGACY",
+            "CURRENT" if marker == 8 else "LEGACY",
             marker,
         )
     else:

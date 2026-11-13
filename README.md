@@ -454,6 +454,7 @@ release. Actual results and outstanding limits remain tied to their evidence.
 - [v0.1 baseline and compatibility records](docs/v0.1/baseline.md)
 - [v0.1 desktop integration spike and RPC](docs/v0.1/phase-1-desktop.md)
 - [v0.1 Project Registry, Work Items, SQLite v7 and RPC v2](docs/v0.1/phase-2-projects.md)
+- [v0.1 Agent Sessions and SQLite v8](docs/v0.1/phase-3-sessions.md)
 - [Architecture and six Engines](docs/architecture.md)
 - [Eight contract types](docs/contracts.md)
 - [Project Manager tutorial, approval and service API](docs/project-manager.md)

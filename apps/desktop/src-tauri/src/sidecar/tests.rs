@@ -23,6 +23,8 @@ for line in sys.stdin:
         methods = ["system.handshake","system.version","project.status","providers.status","system.shutdown"]
         if mode != "limited":
             methods.extend(["projects.list", "future.method"])
+        if mode == "session_shutdown":
+            methods.append("session.start")
         if mode == "missing_core":
             methods.remove("system.shutdown")
         result = {
@@ -31,6 +33,8 @@ for line in sys.stdin:
             "methods": methods,
         }
     elif method == "system.shutdown":
+        if mode == "session_shutdown":
+            time.sleep(1.2)
         if mode == "ignore_shutdown":
             time.sleep(30)
         result = {"stopping": True}
@@ -181,6 +185,15 @@ fn shutdown_terminates_and_reaps_an_unresponsive_child() {
 }
 
 #[test]
+fn session_shutdown_waits_for_backend_worker_cleanup() {
+    let (mut child, handshake) =
+        fixture("session_shutdown", HANDSHAKE_TIMEOUT, no_events()).unwrap();
+    assert!(handshake.supports("session.start"));
+    child.shutdown().unwrap();
+    assert!(child.child.try_wait().unwrap().unwrap().success());
+}
+
+#[test]
 #[ignore = "requires a private installed runtime and a prepared test project"]
 fn private_runtime_repeated_cycles() {
     assert!(
@@ -200,6 +213,13 @@ fn private_runtime_repeated_cycles() {
         assert_eq!(handshake.protocol_version, 2);
         assert!(handshake.supports("projects.list"));
         assert!(handshake.supports("work.create"));
+        assert!(handshake.supports("session.list"));
+        assert!(
+            child
+                .request("session.list", json!({"root": &root}))
+                .unwrap()["sessions"]
+                .is_array()
+        );
         assert_eq!(child.version().unwrap(), json!({"version": "0.1.0"}));
         let project = child.project_status(&root).unwrap();
         assert_eq!(project["exists"], true);

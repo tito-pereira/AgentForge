@@ -74,8 +74,55 @@ interface WorkInput {
   parent_work_item_id?: string;
 }
 
+export interface AgentSession {
+  session_id: string;
+  work_item_id: string;
+  project_id: string;
+  provider: string;
+  provider_version: string | null;
+  model: string | null;
+  state: string;
+  run_generation: number;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cached_tokens: number | null;
+  duration_ms: number | null;
+  reported_cost: string | null;
+  reported_cost_currency: string | null;
+  timeout_seconds: number;
+  read_only: boolean;
+  can_cancel: boolean;
+  can_recover: boolean;
+  cleanup_unconfirmed: boolean;
+}
+
+export interface SessionEvent {
+  sequence: number;
+  kind: string;
+  occurred_at: string;
+  payload: Record<string, unknown>;
+  native_kind: string | null;
+  session_id: string;
+}
+
+interface SessionStart {
+  provider: string;
+  work_item_id: string;
+  timeout_seconds: number;
+  read_only: boolean;
+  instruction?: string;
+}
+
+let pending: Promise<unknown> = Promise.resolve();
+
 function request<T>(method: string, params: object) {
-  return invoke<T>("workspace_request", { method, params });
+  const reply = pending.then(() => invoke<T>("workspace_request", { method, params }));
+  pending = reply.catch(() => undefined);
+  return reply;
 }
 
 export type BackendSnapshot =
@@ -103,6 +150,19 @@ export const bridge = {
       expected_updated_at: item.updated_at,
       status,
     }),
+  sessions: (root: string, offset: number) =>
+    request<{ sessions: AgentSession[]; next_offset: number | null }>("session.list", { root, offset }),
+  sessionGet: (root: string, session_id: string) =>
+    request<AgentSession>("session.get", { root, session_id }),
+  sessionEvents: (root: string, session_id: string, after_sequence: number, limit: number) =>
+    request<{ events: SessionEvent[]; next_after_sequence: number }>("session.events", { root, session_id, after_sequence, limit }),
+  sessionStart: (root: string, input: SessionStart) =>
+    request<AgentSession>("session.start", { root, ...input }),
+  sessionCancel: (root: string, session_id: string, generation: number) =>
+    request<AgentSession>("session.cancel", { root, session_id, generation }),
+  sessionRecover: (root: string, session_id: string, instruction?: string) =>
+    request<AgentSession>("session.recover", { root, session_id, ...(instruction ? { instruction } : {}) }),
+
   restart: () => invoke<BackendSnapshot>("restart_backend"),
   onDisconnect: (handler: () => void) =>
     listen<{ method: string }>("backend-lifecycle", ({ payload }) => {

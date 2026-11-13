@@ -8,6 +8,7 @@ import {
   type ProjectSummary,
   type ProviderStatus,
 } from "./bridge";
+import { Agents } from "./Agents";
 import { WorkItems } from "./WorkItems";
 
 const storageLabels: Record<ProjectStatus["storage"], string> = {
@@ -131,7 +132,8 @@ function RegistryEntry({ entry, busy, inspect, open }: {
   );
 }
 
-function Projects({ methods }: { methods: string[] }) {
+function Projects({ methods, providers }: { methods: string[]; providers: ProviderStatus[] }) {
+  const [view, setView] = useState<"work" | "agents">("work");
   const [root, setRoot] = useState("");
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [registry, setRegistry] = useState<ProjectEntry[]>([]);
@@ -174,6 +176,7 @@ function Projects({ methods }: { methods: string[] }) {
     setOpening(true);
     setOpenError("");
     setProject(null);
+    setView("work");
     try {
       const result = await bridge.project(path, explicit);
       if (explicit) await loadProjects(0);
@@ -237,7 +240,17 @@ function Projects({ methods }: { methods: string[] }) {
         <section aria-labelledby="project-title">
           <div className="section-heading"><h2 id="project-title">Project Summary</h2></div>
           <ProjectFacts project={project} />
-          {project.initialized && (project.storage === "CURRENT" || project.storage === "ABSENT") && methods.includes("work.tree") && (
+          {project.initialized && project.schema_version === 8 && methods.includes("session.list") && (
+            <div className="field-row project-views" aria-label="Project views">
+              <button type="button" aria-pressed={view === "work"} onClick={() => setView("work")}>Work Items</button>
+              <button type="button" aria-pressed={view === "agents"} onClick={() => setView("agents")}>Agents</button>
+            </div>
+          )}
+          {view === "agents" && project.initialized && project.schema_version === 8 && methods.includes("session.list") && (
+            <Agents key={project.root} root={project.root} methods={methods} providers={providers} />
+          )}
+
+          {view === "work" && project.initialized && (project.storage === "CURRENT" || project.storage === "ABSENT") && methods.includes("work.tree") && (
             <WorkItems
               key={project.root}
               root={project.root}
@@ -336,7 +349,7 @@ export function App() {
         )}
       </section>
 
-      {ready && <Projects methods={snapshot.handshake.methods} />}
+      {ready && <Projects methods={snapshot.handshake.methods} providers={snapshot.providers.providers} />}
 
       {ready && <Providers providers={snapshot.providers.providers} />}
     </main>
