@@ -9,6 +9,8 @@ from corinthos.contracts import ContractError, ContractRef, ContractStore
 from corinthos.lifecycle.repository import LifecycleRepository, LifecycleSummary
 from corinthos.project_registry import ProjectRegistryService, display_name
 from corinthos.project_status import ProjectStorage, inspect_project
+from corinthos.sessions.model import SessionSummary
+from corinthos.sessions.repository import SessionRepository
 from corinthos.validation.repository import ValidationRepository, ValidationSummary
 from corinthos.work import WorkCounts, WorkService
 
@@ -35,6 +37,7 @@ class _ProjectSources:
     lifecycle: LifecycleSummary | None
     work_items: WorkCounts | None
     unavailable_sources: list[str]
+    sessions: SessionSummary | None
 
 
 @dataclass(frozen=True)
@@ -49,11 +52,13 @@ class ProjectSummary(_ProjectSources):
     last_accessed_at: str | None
 
 
-def _unavailable(work_items: WorkCounts | None) -> _ProjectSources:
+def _unavailable(
+    work_items: WorkCounts | None, sessions: SessionSummary | None = None
+) -> _ProjectSources:
     unavailable = list(_MISSING_SOURCES)
     if work_items is None:
         unavailable.append("WORK_ITEMS")
-    return _ProjectSources(None, None, None, [], [], None, None, work_items, unavailable)
+    return _ProjectSources(None, None, None, [], [], None, None, work_items, unavailable, sessions)
 
 
 def _inspect_sources(
@@ -65,8 +70,9 @@ def _inspect_sources(
         if len(project) == 1
         else WorkService.project_identity(connection, schema_version=schema)
     )
+    sessions = SessionRepository.snapshot_summary(connection) if schema >= 8 else None
     if project_id is None:
-        return _unavailable(work.counts(connection=connection) if schema >= 7 else None)
+        return _unavailable(work.counts(connection=connection) if schema >= 7 else None, sessions)
 
     workflow = ContractStore.active_references(connection, project_id, "WORKFLOW", limit=2)
     modules = ContractStore.active_references(
@@ -103,6 +109,7 @@ def _inspect_sources(
         lifecycle,
         work_items,
         unavailable,
+        sessions,
     )
 
 

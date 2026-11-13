@@ -7,6 +7,7 @@ from dataclasses import asdict
 from typing import BinaryIO, TextIO
 
 from corinthos.application import project_status, providers_status, version, workspace
+from corinthos.application.sessions import SessionApplication
 from corinthos.contracts import ContractError
 
 BOOTSTRAP_PROTOCOL_VERSION = 1
@@ -57,7 +58,27 @@ _V2_OPERATIONS = {
         _PAGE_OPTIONS,
     ),
 }
-_MUTATIONS = {"project.open", "work.create", "work.update", "work.status"}
+_SESSION_OPERATIONS = {
+    "session.start": (
+        "start",
+        ("root", "work_item_id", "provider"),
+        ("instruction", "timeout_seconds", "read_only"),
+    ),
+    "session.get": ("get", ("root", "session_id"), ()),
+    "session.list": ("list", ("root",), _PAGE_OPTIONS),
+    "session.events": ("events", ("root", "session_id"), ("limit", "after_sequence")),
+    "session.cancel": ("cancel", ("root", "session_id"), ("generation",)),
+    "session.recover": ("recover", ("root", "session_id"), ("instruction",)),
+}
+_MUTATIONS = {
+    "project.open",
+    "work.create",
+    "work.update",
+    "work.status",
+    "session.start",
+    "session.cancel",
+    "session.recover",
+}
 _ERROR_MESSAGES = {
     -32700: "Parse error",
     -32600: "Invalid Request",
@@ -125,7 +146,9 @@ def _params(message: dict, *, required=(), optional=()) -> dict:
     return params
 
 
-def _dispatch(message: dict, negotiated: int | None) -> tuple[dict, int | None, bool]:
+def _dispatch(
+    message: dict, negotiated: int | None, sessions: SessionApplication
+) -> tuple[dict, int | None, bool]:
     method = message["method"]
     if method == "system.handshake":
         received = _params(message, required=("protocol_version",))["protocol_version"]
@@ -139,27 +162,34 @@ def _dispatch(message: dict, negotiated: int | None) -> tuple[dict, int | None, 
             {
                 "protocol_version": received,
                 "version": version().version,
-                "methods": [*_V1_METHODS, *_V2_OPERATIONS] if received == 2 else list(_V1_METHODS),
+                "methods": [*_V1_METHODS, *_V2_OPERATIONS, *_SESSION_OPERATIONS]
+                if received == 2
+                else list(_V1_METHODS),
             },
             received if "id" in message else negotiated,
             False,
         )
-    if method in _V2_OPERATIONS:
+    if method in _V2_OPERATIONS or method in _SESSION_OPERATIONS:
         if negotiated is None:
             raise _RpcError(-32001)
         if negotiated != 2:
             raise _RpcError(-32601)
         if method in _MUTATIONS and "id" not in message:
             raise _RpcError(-32600)
-        operation, required, optional = _V2_OPERATIONS[method]
+        if method in _SESSION_OPERATIONS:
+            action, required, optional = _SESSION_OPERATIONS[method]
+            operation = getattr(sessions, action)
+        else:
+            operation, required, optional = _V2_OPERATIONS[method]
         params = _params(message, required=required, optional=optional)
         if "root" in params and not isinstance(params["root"], str):
             raise _RpcError(-32602)
+        from corinthos.sessions.model import SessionError
         from corinthos.work import WorkError
 
         try:
             return operation(**params), negotiated, False
-        except WorkError:
+        except (SessionError, WorkError):
             raise _RpcError(-32602) from None
         except ContractError:
             raise _RpcError(-32002) from None
@@ -219,6 +249,14 @@ def _notify(output: BinaryIO, method: str, params: dict) -> None:
 
 def serve(source: BinaryIO, output: BinaryIO, diagnostics: TextIO) -> None:
     """Serve one local peer until EOF or an identified shutdown request."""
+    sessions = SessionApplication()
+    try:
+        _serve(source, output, diagnostics, sessions)
+    finally:
+        sessions.supervisor.close()
+
+
+def _serve(source, output, diagnostics, sessions):
     # The frozen v1 ready event precedes explicit negotiation on every connection.
     _notify(output, "system.ready", {"protocol_version": BOOTSTRAP_PROTOCOL_VERSION})
     negotiated = None
@@ -241,7 +279,9 @@ def serve(source: BinaryIO, output: BinaryIO, diagnostics: TextIO) -> None:
             _write(output, _error(error.code))
             continue
         try:
-            result, negotiated, stopping = _dispatch(message, negotiated)
+            result, negotiated, stopping = _dispatch(message, negotiated, sessions)
+            if stopping and not sessions.supervisor.close():
+                print("Session cleanup exceeded the shutdown deadline.", file=diagnostics)
             reply = {"jsonrpc": "2.0", "id": message.get("id"), "result": result}
         except _RpcError as error:
             reply = _error(error.code, message.get("id"))

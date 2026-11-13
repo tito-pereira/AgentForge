@@ -7,8 +7,10 @@ process-lifecycle controls, not a sandbox against deliberate OS escape APIs.
 
 import ctypes
 import os
+import select
 import signal
 import subprocess
+import sys
 from threading import Lock
 from time import monotonic, sleep
 
@@ -189,9 +191,27 @@ class _WindowsJob:
 class ManagedProcess:
     """A Popen plus the lifecycle boundary owned by this caller."""
 
-    def __init__(self, process, job=None):
+    def __init__(self, process, job=None, *, reap_descendants=False):
         self.process, self._job = process, job
         self._lock, self._finished = Lock(), None
+        self._reap_descendants = reap_descendants
+
+    @property
+    def returncode(self):
+        return self.process.returncode
+
+    def group_gone(self):
+        if self._reap_descendants:
+            try:
+                while os.waitpid(-1, os.WNOHANG)[0]:
+                    pass
+            except ChildProcessError:
+                pass
+        try:
+            os.killpg(self.process.pid, 0)
+        except ProcessLookupError:
+            return True
+        return False
 
     def finish(self):
         """Stop remaining owned descendants even when their parent exited normally."""
@@ -211,9 +231,7 @@ class ManagedProcess:
                     self.process.wait(timeout=3)
                     deadline = monotonic() + 3
                     while True:
-                        try:
-                            os.killpg(self.process.pid, 0)
-                        except ProcessLookupError:
+                        if self.group_gone():
                             confirmed = True
                             break
                         if monotonic() >= deadline:
@@ -225,10 +243,12 @@ class ManagedProcess:
             return confirmed
 
 
-def start_process(command, **kwargs):
+def start_process(command, *, owner_fd=None, **kwargs):
     """Start an owned process; Windows execution remains suspended until assigned."""
     if kwargs.get("shell", False) or kwargs.get("preexec_fn") is not None:
         raise OSError("Owned processes require direct native execution.")
+    if owner_fd is not None and os.name != "nt":
+        return _start_guarded(command, owner_fd, **kwargs)
     job = None
     process = None
     try:
@@ -267,3 +287,123 @@ def start_process(command, **kwargs):
         if isinstance(error, (KeyboardInterrupt, SystemExit)):
             raise
         raise ProcessStartError(cleanup_confirmed=cleaned) from None
+
+
+class _GuardedProcess:
+    """Parent-side transport to the POSIX supervisor-loss guardian."""
+
+    def __init__(self, process, signal_fd, result_fd):
+        self.process = process
+        self._signal_fd = signal_fd
+        self._result_fd = result_fd
+        self._finished = None
+        self._lock = Lock()
+        self.returncode = None
+
+    def finish(self):
+        with self._lock:
+            if self._finished is not None:
+                return self._finished
+            os.close(self._signal_fd)
+            try:
+                self._finished = self.process.wait(timeout=7) == 0
+                if self._finished:
+                    self.returncode = int(os.read(self._result_fd, 32))
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                self._finished = False
+            finally:
+                os.close(self._result_fd)
+            return self._finished
+
+
+def _start_guarded(command, owner_fd, **kwargs):
+    guard_read, guard_write = os.pipe()
+    try:
+        result_read, result_write = os.pipe()
+    except OSError:
+        os.close(guard_read)
+        os.close(guard_write)
+        raise
+    try:
+        guardian = subprocess.Popen(
+            [
+                sys.executable,
+                "-I",
+                "-B",
+                os.path.abspath(__file__),
+                str(guard_read),
+                str(result_write),
+                *command,
+            ],
+            pass_fds=(guard_read, result_write, owner_fd),
+            start_new_session=True,
+            **kwargs,
+        )
+    except BaseException as error:
+        os.close(guard_write)
+        os.close(result_read)
+        if isinstance(error, (KeyboardInterrupt, SystemExit)):
+            raise
+        raise ProcessStartError(cleanup_confirmed=True) from None
+    finally:
+        os.close(guard_read)
+        os.close(result_write)
+    managed = _GuardedProcess(guardian, guard_write, result_read)
+    try:
+        ready = select.select([result_read], [], [], 5)[0] and os.read(result_read, 1)
+        if ready != b"1":
+            raise ProcessStartError(cleanup_confirmed=managed.finish())
+    except BaseException:
+        managed.finish()
+        for stream in (guardian.stdin, guardian.stdout, guardian.stderr):
+            if stream is not None:
+                stream.close()
+        raise
+    return managed
+
+
+def _guardian(liveness_fd, result_fd, command):
+    """Keep the project lock inherited by this process until its native group is gone."""
+    # Linux adopts its provider's orphaned grandchildren here so they can be reaped.
+    reap = sys.platform == "linux" and ctypes.CDLL(None).prctl(36, 1, 0, 0, 0) == 0
+    if select.select([liveness_fd], [], [], 0)[0]:
+        os.write(result_fd, b"00")
+        return
+    try:
+        managed = start_process(command)
+    except ProcessStartError as error:
+        if not error.cleanup_confirmed:
+            while True:
+                sleep(1)
+        os.write(result_fd, b"01")
+        return
+    managed._reap_descendants = reap
+    try:
+        os.write(result_fd, b"1")
+        # Only the native process keeps the protocol streams after launch.
+        for descriptor in (0, 1, 2):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        while managed.process.poll() is None:
+            if select.select([liveness_fd], [], [], 0.05)[0]:
+                break
+    finally:
+        if not managed.finish():
+            while True:
+                try:
+                    managed.process.poll()
+                    if managed.group_gone():
+                        break
+                except OSError:
+                    pass
+                sleep(0.1)
+        try:
+            os.write(result_fd, str(managed.returncode).encode("ascii"))
+        except BrokenPipeError:
+            pass
+
+
+if __name__ == "__main__":
+    _guardian(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3:])

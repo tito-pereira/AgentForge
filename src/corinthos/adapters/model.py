@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
-from corinthos.contracts import ContractRef
+from corinthos.contracts import ContractRef, IntegrityError
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,3 +63,28 @@ class AgentResult:
     error_kind: str | None = None
     duration_seconds: float = 0.0
     cleanup_confirmed: bool = True
+    model: str | None = None
+    reported_cost: str | None = None
+    reported_cost_currency: str | None = None
+    normalized_usage: dict | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SessionPlan:
+    """Local execution inputs bound to one exact provider and prepared workspace."""
+
+    workspace: Path
+    capabilities: Capabilities
+    binding_sha256: str
+    command: tuple[str, ...] = field(repr=False)
+    prompt: str = field(repr=False)
+    read_only: bool
+
+
+class SessionPlanError(IntegrityError):
+    """A selected provider could not be prepared without weakening containment."""
+
+    def __init__(self, error_kind: str, *, cleanup_confirmed: bool = True):
+        super().__init__("The selected native provider could not be prepared for this session.")
+        self.error_kind = error_kind
+        self.cleanup_confirmed = cleanup_confirmed

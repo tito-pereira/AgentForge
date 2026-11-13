@@ -96,10 +96,13 @@ def test_real_baseline_v6_migrates_once_with_verified_v6_backup(real_v6):
     assert database.read_bytes() == before
     first = ContractStore(real_v6)
     (backup,) = database.parent.glob("state.pre-v7-*.db")
-    assert _version(database) == 7
+    assert _version(database) == 8
     assert _version(backup) == 6
     assert _records(database, _TABLES_V6) == _records(backup, _TABLES_V6) == expected
-    assert _tables(database) == _tables(backup) | _MIGRATED_TABLES
+    assert _tables(database) == _tables(backup) | _MIGRATED_TABLES | {
+        "agent_sessions",
+        "agent_session_events",
+    }
     _check(database)
     _check(backup)
     after = database.read_bytes()
@@ -120,7 +123,7 @@ def test_populated_v6_preserves_all_histories_and_handles_concurrent_openers(pop
     with ThreadPoolExecutor(max_workers=2) as pool:
         first, second = pool.map(ContractStore, (populated_v6, populated_v6))
     (backup,) = database.parent.glob("state.pre-v7-*.db")
-    assert _version(database) == 7 and _version(backup) == 6
+    assert _version(database) == 8 and _version(backup) == 6
     assert _records(database, _TABLES_V6) == _records(backup, _TABLES_V6) == expected
     assert _artifacts(populated_v6) == expected_artifacts
     assert first.list_events() == second.list_events()
@@ -145,7 +148,7 @@ def test_failed_v7_migration_keeps_v6_and_verified_original_backup(populated_v6,
     _check(database)
     _check(backup)
     assert ContractStore(populated_v6).list_events()
-    assert _version(database) == 7
+    assert _version(database) == 8
     assert _records(database, _TABLES_V6) == expected
 
 
@@ -165,7 +168,7 @@ def test_invalid_v6_sources_are_refused_without_mutation(real_v6, replacement, m
     mode = database.stat().st_mode
     ddl = {
         "foreign": "PRAGMA application_id = 1",
-        "future": "PRAGMA user_version = 8",
+        "future": "PRAGMA user_version = 9",
         "schema": "DROP TRIGGER lc_records_no_delete",
         "foreign-key": """
             UPDATE contracts SET active_revision_id = 'missing'

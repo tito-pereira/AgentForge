@@ -32,8 +32,9 @@ pub fn with_probe<'a, R: Runtime, M: tauri::Manager<R>>(
     {
         return Err(invalid_fixture());
     }
+    let active = env::var_os("CORINTHOS_DESKTOP_SMOKE_START").is_some_and(|value| value == "1");
     let script = format!(
-        "({})({});",
+        "({})({}, {active});",
         include_str!("../tests/desktop-smoke.js"),
         serde_json::to_string(project_text)?
     );
@@ -58,7 +59,10 @@ pub fn with_probe<'a, R: Runtime, M: tauri::Manager<R>>(
                 "Corinthos desktop smoke: fail [backend]" => "fail [backend]\n",
                 "Corinthos desktop smoke: fail [registry]" => "fail [registry]\n",
                 "Corinthos desktop smoke: fail [project]" => "fail [project]\n",
-                "Corinthos desktop smoke: fail [work]" => "fail [work]\n",
+                "Corinthos desktop smoke: fail [agents]" => "fail [agents]\n",
+                "Corinthos desktop smoke: fail [start]" => "fail [start]\n",
+                "Corinthos desktop smoke: fail [cancel]" => "fail [cancel]\n",
+                "Corinthos desktop smoke: fail [timeout]" => "fail [timeout]\n",
                 "Corinthos desktop smoke: fail [unexpected]" => "fail [unexpected]\n",
                 _ => return,
             };

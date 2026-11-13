@@ -20,6 +20,7 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(8);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const PROJECT_OPEN_TIMEOUT: Duration = Duration::from_secs(15);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
+const SESSION_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(12);
 const PROTOCOL_VERSION: u32 = 2;
 const CORE_METHODS: [&str; 5] = [
     "system.handshake",
@@ -62,6 +63,7 @@ pub struct Sidecar {
     closing: Arc<AtomicBool>,
     events: EventSink,
     next_id: u64,
+    shutdown_timeout: Duration,
 }
 
 impl Sidecar {
@@ -98,6 +100,7 @@ impl Sidecar {
             closing,
             events: Arc::clone(&events),
             next_id: 1,
+            shutdown_timeout: SHUTDOWN_TIMEOUT,
         };
         thread::Builder::new()
             .spawn(move || {
@@ -163,6 +166,9 @@ impl Sidecar {
             method: "system.ready",
             params: json!({"protocol_version": PROTOCOL_VERSION}),
         });
+        if handshake.supports("session.start") {
+            client.shutdown_timeout = SESSION_SHUTDOWN_TIMEOUT;
+        }
         Ok((client, handshake))
     }
 
@@ -187,7 +193,7 @@ impl Sidecar {
 
     pub fn shutdown(&mut self) -> Result<()> {
         self.closing.store(true, Ordering::Release);
-        let deadline = Instant::now() + SHUTDOWN_TIMEOUT;
+        let deadline = Instant::now() + self.shutdown_timeout;
         if self.is_running()
             && let Ok(id) = self.send("system.shutdown", json!({}))
         {

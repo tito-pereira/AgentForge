@@ -8,7 +8,7 @@ use std::sync::{
 };
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewWindowBuilder};
 
-const WORKSPACE_METHODS: [&str; 7] = [
+const WORKSPACE_METHODS: [&str; 13] = [
     "projects.list",
     "project.summary",
     "project.open",
@@ -16,6 +16,12 @@ const WORKSPACE_METHODS: [&str; 7] = [
     "work.get",
     "work.create",
     "work.status",
+    "session.start",
+    "session.list",
+    "session.get",
+    "session.events",
+    "session.cancel",
+    "session.recover",
 ];
 
 #[derive(Default)]

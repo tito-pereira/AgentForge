@@ -28,7 +28,7 @@ from .schema import validate_schema
 from .semantics import validate_semantics
 
 _APPLICATION_ID = 0x4E554B59
-_SCHEMA_VERSION = 7
+_SCHEMA_VERSION = 8
 _LOCK_TIMEOUT = 5.0
 _BUSY_CODES = {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
 _ACTIVE_TYPES = frozenset({"PROJECT", "WORKFLOW", "MODULE", "TECHNOLOGY_DECISION", "VALIDATION"})
@@ -525,13 +525,99 @@ _MIGRATION_V7 = (
        WHEN EXISTS (SELECT 1 FROM work_items WHERE work_item_id = NEW.work_item_id)
        BEGIN SELECT RAISE(ABORT, 'Work Item identities are immutable'); END""",
 )
+_MIGRATION_V8 = (
+    """CREATE TABLE agent_sessions (
+        session_id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL,
+        work_item_id TEXT NOT NULL,
+        provider TEXT NOT NULL CHECK (length(provider) BETWEEN 1 AND 128),
+        read_only INTEGER NOT NULL CHECK (read_only IN (0, 1)),
+        provider_version TEXT CHECK (length(provider_version) BETWEEN 1 AND 128),
+        model TEXT CHECK (length(model) BETWEEN 1 AND 128),
+        native_session_id TEXT CHECK (length(native_session_id) BETWEEN 1 AND 128),
+        native_resume INTEGER NOT NULL CHECK (native_resume IN (0, 1)),
+        envelope_sha256 TEXT CHECK (length(envelope_sha256) = 64),
+        state TEXT NOT NULL CHECK (state IN (
+            'STARTING', 'RUNNING', 'CANCELLING', 'SUCCEEDED', 'FAILED',
+            'CANCELLED', 'TIMED_OUT', 'INTERRUPTED'
+        )),
+        run_generation INTEGER NOT NULL CHECK (run_generation BETWEEN 1 AND 9007199254740991),
+        owner_id TEXT,
+        lease_expires_at REAL,
+        cleanup_unconfirmed INTEGER NOT NULL DEFAULT 0 CHECK (cleanup_unconfirmed IN (0, 1)),
+        timeout_seconds INTEGER NOT NULL CHECK (timeout_seconds BETWEEN 1 AND 3600),
+        created_at TEXT NOT NULL,
+        started_at TEXT,
+        updated_at TEXT NOT NULL,
+        finished_at TEXT,
+        input_tokens INTEGER CHECK (input_tokens BETWEEN 0 AND 9007199254740991),
+        output_tokens INTEGER CHECK (output_tokens BETWEEN 0 AND 9007199254740991),
+        cached_tokens INTEGER CHECK (cached_tokens BETWEEN 0 AND 9007199254740991),
+        duration_ms INTEGER CHECK (duration_ms BETWEEN 0 AND 9007199254740991),
+        reported_cost TEXT CHECK (length(reported_cost) BETWEEN 1 AND 64),
+        reported_cost_currency TEXT CHECK (length(reported_cost_currency) = 3),
+        CHECK ((owner_id IS NULL) = (lease_expires_at IS NULL)),
+        CHECK ((state IN ('STARTING', 'RUNNING', 'CANCELLING')) = (owner_id IS NOT NULL)),
+        CHECK ((owner_id IS NULL) = (finished_at IS NOT NULL)),
+        CHECK ((reported_cost IS NULL) = (reported_cost_currency IS NULL)),
+        FOREIGN KEY (project_id, work_item_id) REFERENCES work_items (project_id, work_item_id)
+    )""",
+    """CREATE UNIQUE INDEX agent_sessions_one_active
+       ON agent_sessions ((1)) WHERE state IN ('STARTING', 'RUNNING', 'CANCELLING')""",
+    """CREATE INDEX agent_sessions_recent ON agent_sessions (created_at DESC, session_id DESC)""",
+    """CREATE TABLE agent_session_events (
+        session_id TEXT NOT NULL REFERENCES agent_sessions (session_id),
+        sequence INTEGER NOT NULL CHECK (sequence BETWEEN 1 AND 9007199254740991),
+        run_generation INTEGER NOT NULL CHECK (run_generation BETWEEN 1 AND 9007199254740991),
+        kind TEXT NOT NULL CHECK (kind IN (
+            'SESSION_CREATED', 'SESSION_STARTED', 'OUTPUT', 'TOOL_ACTIVITY', 'USAGE',
+            'WARNING', 'ERROR', 'SESSION_FINISHED', 'CANCEL_REQUESTED', 'CANCELLED',
+            'TIMED_OUT', 'INTERRUPTED', 'RECOVERY_STARTED'
+        )),
+        occurred_at TEXT NOT NULL,
+        payload TEXT NOT NULL CHECK (length(CAST(payload AS BLOB)) BETWEEN 2 AND 4096),
+        native_kind TEXT CHECK (length(native_kind) BETWEEN 1 AND 128),
+        PRIMARY KEY (session_id, sequence)
+    )""",
+    """CREATE TRIGGER agent_sessions_identity BEFORE UPDATE ON agent_sessions
+       WHEN NEW.session_id <> OLD.session_id OR NEW.project_id <> OLD.project_id
+            OR NEW.work_item_id <> OLD.work_item_id OR NEW.provider <> OLD.provider
+            OR NEW.read_only <> OLD.read_only OR NEW.timeout_seconds <> OLD.timeout_seconds
+            OR NEW.created_at <> OLD.created_at
+            OR (OLD.envelope_sha256 IS NOT NULL AND NEW.envelope_sha256 IS NOT OLD.envelope_sha256)
+            OR (OLD.native_session_id IS NOT NULL AND NEW.native_session_id IS NOT OLD.native_session_id)
+       BEGIN SELECT RAISE(ABORT, 'Agent Session identity is immutable'); END""",
+    """CREATE TRIGGER agent_sessions_terminal BEFORE UPDATE ON agent_sessions
+       WHEN OLD.state IN ('SUCCEEDED', 'FAILED', 'CANCELLED', 'TIMED_OUT')
+       BEGIN SELECT RAISE(ABORT, 'Terminal Agent Sessions are immutable'); END""",
+    """CREATE TRIGGER agent_sessions_no_delete BEFORE DELETE ON agent_sessions
+       BEGIN SELECT RAISE(ABORT, 'Agent Sessions are retained'); END""",
+    """CREATE TRIGGER agent_sessions_no_replace BEFORE INSERT ON agent_sessions
+       WHEN EXISTS (SELECT 1 FROM agent_sessions WHERE session_id = NEW.session_id)
+            OR (NEW.state IN ('STARTING', 'RUNNING', 'CANCELLING') AND EXISTS (
+                SELECT 1 FROM agent_sessions WHERE state IN ('STARTING', 'RUNNING', 'CANCELLING')
+            ))
+       BEGIN SELECT RAISE(ABORT, 'Agent Session conflicts with retained state'); END""",
+    """CREATE TRIGGER agent_session_events_no_update BEFORE UPDATE ON agent_session_events
+       BEGIN SELECT RAISE(ABORT, 'Agent Session events are append-only'); END""",
+    """CREATE TRIGGER agent_session_events_no_delete BEFORE DELETE ON agent_session_events
+       BEGIN SELECT RAISE(ABORT, 'Agent Session events are append-only'); END""",
+    """CREATE TRIGGER agent_session_events_no_replace BEFORE INSERT ON agent_session_events
+       WHEN EXISTS (
+           SELECT 1 FROM agent_session_events
+           WHERE session_id = NEW.session_id AND sequence = NEW.sequence
+       )
+       BEGIN SELECT RAISE(ABORT, 'Agent Session events are append-only'); END""",
+)
+
 _SUPPORTED_VERSIONS = range(1, _SCHEMA_VERSION + 1)
 _REQUIRED_TABLES_V6 = _REQUIRED_TABLES_V5 | {"lc_records", "lc_projects", "lc_events"}
-_REQUIRED_TABLES = _REQUIRED_TABLES_V6 | {
+_REQUIRED_TABLES_V7 = _REQUIRED_TABLES_V6 | {
     "work_items",
     "work_item_dependencies",
     "work_item_modules",
 }
+_REQUIRED_TABLES = _REQUIRED_TABLES_V7 | {"agent_sessions", "agent_session_events"}
 _REVISIONS = """SELECT revisions.*, contracts.contract_type, contracts.project_id,
                 contracts.active_revision_id
                 FROM revisions JOIN contracts USING (contract_id)"""
@@ -565,11 +651,12 @@ def _verify_database(connection: sqlite3.Connection, version: int) -> None:
         4: _REQUIRED_TABLES_V4,
         5: _REQUIRED_TABLES_V5,
         6: _REQUIRED_TABLES_V6,
-        7: _REQUIRED_TABLES,
+        7: _REQUIRED_TABLES_V7,
+        8: _REQUIRED_TABLES,
     }[version]
     if not required <= tables:
         raise StoreError("The state database schema is incomplete.")
-    if version == _SCHEMA_VERSION:
+    if version >= 7:
         _verify_migration_schema(connection, version)
     if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
         raise StoreError("The state database failed its integrity check.")
@@ -578,7 +665,7 @@ def _verify_database(connection: sqlite3.Connection, version: int) -> None:
 
 
 def _verify_migration_schema(connection: sqlite3.Connection, version: int) -> None:
-    """Verify the original definitions survive before and after the v7 migration."""
+    """Verify the original definitions survive before and after verified migrations."""
     actual = {
         row[0] for row in connection.execute("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL")
     }
@@ -590,8 +677,10 @@ def _verify_migration_schema(connection: sqlite3.Connection, version: int) -> No
         *_MIGRATION_V5,
         *_MIGRATION_V6,
     }
-    if version == 7:
+    if version >= 7:
         expected.update(_MIGRATION_V7)
+    if version >= 8:
+        expected.update(_MIGRATION_V8)
     if not expected <= actual:
         raise StoreError("The state database has missing or altered schema definitions.")
 
@@ -654,27 +743,38 @@ class ContractStore:
     @staticmethod
     def verify_existing(project_root: Path) -> bool:
         """Inspect a saved database without creating or migrating project state."""
+        with ContractStore.read_snapshot(project_root) as (_, version):
+            return version is not None
+
+    @staticmethod
+    @contextmanager
+    def read_snapshot(project_root: Path) -> Iterator[tuple[sqlite3.Connection | None, int | None]]:
+        """Read coherent operational state while other connections may be writing."""
         database = private_directory(project_root) / "state.db"
         try:
             _check_database_files(database)
             if not database.exists():
-                return False
-            with closing(
-                sqlite3.connect(
-                    f"{database.as_uri()}?mode=ro",
-                    uri=True,
-                    timeout=_LOCK_TIMEOUT,
-                    autocommit=True,
-                )
-            ) as connection:
+                yield None, None
+                return
+            deadline = monotonic() + 2
+            uri = f"{database.as_uri()}?mode=ro"
+            with closing(sqlite3.connect(uri, uri=True, timeout=2, autocommit=True)) as connection:
+                connection.row_factory = sqlite3.Row
+                connection.set_progress_handler(lambda: monotonic() >= deadline, 1000)
                 connection.execute("PRAGMA trusted_schema = OFF")
+                connection.execute("PRAGMA query_only = ON")
                 connection.execute("PRAGMA foreign_keys = ON")
                 connection.execute("BEGIN")
                 _, version = _markers(connection)
                 _verify_database(connection, version)
+                yield connection, version
                 connection.execute("COMMIT")
-            return True
-        except (OSError, sqlite3.Error):
+        except sqlite3.Error as error:
+            code = getattr(error, "sqlite_errorcode", 0) & 255
+            if code in _BUSY_CODES or code == sqlite3.SQLITE_INTERRUPT:
+                raise ConflictError("The database is busy. Retry the Agent Session read.") from None
+            raise StoreError("Cannot read the existing project database.") from None
+        except OSError:
             raise StoreError("Cannot read the existing project database.") from None
 
     @staticmethod
@@ -859,6 +959,9 @@ class ContractStore:
                 connection.execute(statement)
         if version < 7:
             for statement in _MIGRATION_V7:
+                connection.execute(statement)
+        if version < 8:
+            for statement in _MIGRATION_V8:
                 connection.execute(statement)
         connection.execute(f"PRAGMA application_id = {_APPLICATION_ID}")
         connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")

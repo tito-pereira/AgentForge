@@ -137,7 +137,11 @@ class WorkService:
             yield None
             return
         with ContractStore.inspect_snapshot(root) as (connection, version):
-            yield WorkRepository(connection) if connection is not None and version == 7 else None
+            yield (
+                WorkRepository(connection)
+                if connection is not None and version is not None and version >= 7
+                else None
+            )
 
     @contextmanager
     def _write(self, *, create: bool = False) -> Iterator[WorkRepository]:
