@@ -31,6 +31,8 @@ const WORKSPACE_METHODS: &[&str] = &[
     "handoff.create",
     "handoff.get",
     "handoff.list",
+    "switch.status",
+    "switch.execute",
 ];
 
 #[derive(Default)]

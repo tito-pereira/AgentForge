@@ -153,6 +153,27 @@ export interface SessionHandoff {
   created_at: string;
 }
 
+export interface SwitchView {
+  switch_key: string;
+  project_id: string;
+  work_item_id: string;
+  source_session_id: string;
+  source_provider: string;
+  source_generation: number;
+  source_state: string;
+  cleanup_unconfirmed: boolean;
+  target_provider: string;
+  stage: "SOURCE_ACTIVE" | "STOPPING_SOURCE" | "SOURCE_TERMINAL" | "HANDOFF_READY" |
+    "PROJECTION_READY" | "TARGET_SESSION_ACTIVE" | "TARGET_SESSION_TERMINAL" | "BLOCKED";
+  handoff_id: string | null;
+  handoff_digest: string | null;
+  projection_id: string | null;
+  projection_digest: string | null;
+  target_session_id: string | null;
+  target_state: string | null;
+  blocker: string | null;
+}
+
 let pending: Promise<unknown> = Promise.resolve();
 
 function request<T>(method: string, params: object) {
@@ -221,6 +242,10 @@ export const bridge = {
   handoffGet: (root: string, handoff_id: string) =>
     request<SessionHandoff>("handoff.get", { root, handoff_id }),
 
+  switchStatus: (root: string, source_session_id: string, target_provider: string, source_generation: number) =>
+    request<SwitchView>("switch.status", { root, source_session_id, target_provider, source_generation }),
+  switchExecute: (root: string, source_session_id: string, target_provider: string, source_generation: number) =>
+    request<SwitchView>("switch.execute", { root, source_session_id, target_provider, source_generation }),
   restart: () => invoke<BackendSnapshot>("restart_backend"),
   onDisconnect: (handler: () => void) =>
     listen<{ method: string }>("backend-lifecycle", ({ payload }) => {

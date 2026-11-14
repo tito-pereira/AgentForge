@@ -3,11 +3,12 @@
 
 from dataclasses import replace
 from datetime import UTC, datetime
+from functools import partial
 from uuid import uuid4
 
 from corinthos.contracts.model import ID_PATTERN
 
-from .index import ContextIndex, source_key
+from .index import ContextIndex, handoff_source, source_key
 from .model import (
     MAX_PROJECTION_BYTES,
     MAX_SOURCES,
@@ -37,9 +38,11 @@ def page(limit, offset):
         raise ContextError("Use a bounded Context page.")
 
 
-def _reconstruct(project_id, work_item_id, provider, selector, redaction, sources):
+def _reconstruct(
+    project_id, work_item_id, provider, selector, redaction, sources, required_handoff_id=None
+):
     descriptors = [source.descriptor() for source in sources]
-    return {
+    payload = {
         "project_id": project_id,
         "work_item_id": work_item_id,
         "target_provider": provider,
@@ -49,10 +52,13 @@ def _reconstruct(project_id, work_item_id, provider, selector, redaction, source
             {**descriptor, "capture": source.capture}
             for source, descriptor in zip(sources, descriptors, strict=True)
         ],
-    }, digest(descriptors)
+    }
+    if required_handoff_id is not None:
+        payload["required_handoff_id"] = required_handoff_id
+    return payload, digest(descriptors)
 
 
-def _payload(project_id, work_item_id, provider, sources):
+def _payload(project_id, work_item_id, provider, sources, required_handoff_id=None):
     return _reconstruct(
         project_id,
         work_item_id,
@@ -60,10 +66,11 @@ def _payload(project_id, work_item_id, provider, sources):
         SELECTOR_POLICY_VERSION,
         REDACTION_POLICY_VERSION,
         sources,
+        required_handoff_id,
     )
 
 
-def _verify(projection, sources):
+def _verify(projection, sources, required_handoff_id):
     try:
         if (
             not sources
@@ -71,7 +78,8 @@ def _verify(projection, sources):
             or sources[0].reason != "WORK_ITEM"
             or sources[0].identity != projection.work_item_id
             or sources[0].capture["project_id"] != projection.project_id
-            or sources != sorted(sources, key=source_key)
+            or sources
+            != sorted(sources, key=partial(source_key, required_handoff_id=required_handoff_id))
             or not all(
                 source.ordinal == ordinal and digest(source.capture) == source.digest
                 for ordinal, source in enumerate(sources)
@@ -85,6 +93,7 @@ def _verify(projection, sources):
             projection.selector_policy_version,
             projection.redaction_policy_version,
             sources,
+            required_handoff_id,
         )
         data = canonical_bytes(payload)
         if (
@@ -99,15 +108,19 @@ def _verify(projection, sources):
     return projection
 
 
-def _select(project_id, work_item_id, provider, candidates):
+def _select(project_id, work_item_id, provider, candidates, required_handoff_id=None):
     chosen = []
     seen = set()
-    for source in sorted(candidates, key=source_key):
+    for source in sorted(
+        candidates, key=partial(source_key, required_handoff_id=required_handoff_id)
+    ):
         identity = (source.kind, source.identity, source.revision)
         if identity in seen:
             continue
         source = replace(source, ordinal=len(chosen))
-        payload, _ = _payload(project_id, work_item_id, provider, [*chosen, source])
+        payload, _ = _payload(
+            project_id, work_item_id, provider, [*chosen, source], required_handoff_id
+        )
         if len(canonical_bytes(payload)) > MAX_PROJECTION_BYTES:
             break
         seen.add(identity)
@@ -125,20 +138,42 @@ class ContextService:
 
         self.repository = ContextRepository(root)
 
-    def create(self, work_item_id, provider):
+    def create(self, work_item_id, provider, *, required_handoff_id=None):
         from corinthos.providers import SUPPORTED_PROVIDERS
 
         identifier(work_item_id, "Work Item")
         if not isinstance(provider, str) or provider not in SUPPORTED_PROVIDERS:
             raise ContextError("Select a supported target provider.")
+        if required_handoff_id is not None:
+            identifier(required_handoff_id, "Session Handoff")
         with self.repository.write() as connection:
-            (project_id, exact_work_id), candidates = ContextIndex(
-                connection, self.repository
-            ).select(work_item_id)
+            index = ContextIndex(connection, self.repository)
+            if required_handoff_id is None:
+                (project_id, exact_work_id), candidates = index.select(work_item_id)
+            else:
+                handoff, required = self._required_handoff(
+                    connection, required_handoff_id, work_item_id, provider
+                )
+                existing = self.switch_projection(
+                    connection, handoff.project_id, work_item_id, provider, required_handoff_id
+                )
+                if existing is not None:
+                    return existing
+                (project_id, exact_work_id), candidates = index.select(
+                    work_item_id, required_handoff=required
+                )
+                if project_id != handoff.project_id:
+                    raise ContextError("The required Session Handoff belongs to another project.")
             if sanitize_text(exact_work_id) != exact_work_id:
                 raise ContextError("The Work Item identity is not admissible as Context.")
-            chosen = _select(project_id, exact_work_id, provider, candidates)
-            payload, source_set_digest = _payload(project_id, exact_work_id, provider, chosen)
+            chosen = _select(project_id, exact_work_id, provider, candidates, required_handoff_id)
+            if required_handoff_id is not None and (
+                len(chosen) < 2 or chosen[1].identity != required_handoff_id
+            ):
+                raise ContextError("The required Session Handoff exceeds the Context budget.")
+            payload, source_set_digest = _payload(
+                project_id, exact_work_id, provider, chosen, required_handoff_id
+            )
             projection = Projection(
                 "projection-" + uuid4().hex,
                 project_id,
@@ -153,6 +188,27 @@ class ContextService:
             )
             saved = self.repository.save_projection(connection, projection, chosen)
             return self._verify(connection, saved)
+
+    def _required_handoff(self, connection, handoff_id, work_item_id, provider):
+        from .handoff import verify_handoff
+
+        record = self.repository.get_handoff(connection, handoff_id)
+        if record is None:
+            raise ContextError("The required Session Handoff was not found.")
+        verify_handoff(record)
+        if record.work_item_id != work_item_id or record.provider == provider:
+            raise ContextError("The required Session Handoff does not match the switch.")
+        source = handoff_source(record)
+        if source is None or source.capture.get("excluded") == "CAPTURE_BUDGET":
+            raise ContextError("The required Session Handoff is not admissible as Context.")
+        return record, source
+
+    def switch_projection(self, connection, project_id, work_item_id, target_provider, handoff_id):
+        """Read and verify the existing exact switch projection in the caller's snapshot."""
+        item = self.repository.switch_projection(
+            connection, project_id, work_item_id, target_provider, handoff_id
+        )
+        return self._verify(connection, item) if item is not None else None
 
     def _get(self, connection, projection_id):
         item = (
@@ -171,7 +227,21 @@ class ContextService:
             limit=MAX_SOURCES + 1,
             offset=0,
         )
-        return _verify(projection, sources)
+        required_id = None
+        if "required_handoff_id" in projection.canonical_payload:
+            required_id = identifier(
+                projection.canonical_payload["required_handoff_id"], "Session Handoff"
+            )
+            record, required = self._required_handoff(
+                connection, required_id, projection.work_item_id, projection.target_provider
+            )
+            if record.project_id != projection.project_id or [
+                source for source in sources if source.reason == "HANDOFF"
+            ] != [replace(required, ordinal=1)]:
+                raise ContextError(
+                    "Stored Context Projection does not contain the exact required Session Handoff."
+                )
+        return _verify(projection, sources, required_id)
 
     def get(self, projection_id):
         return self.verify(projection_id)

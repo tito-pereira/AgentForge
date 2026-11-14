@@ -16,6 +16,7 @@ from test_work_items import _create, _example, _publish
 
 from corinthos.bootstrap import initialize
 from corinthos.context import ContextError, ContextService, HandoffService
+from corinthos.context import projection as context_projection
 from corinthos.context.index import ContextIndex
 from corinthos.context.model import MAX_PROJECTION_BYTES, canonical_bytes, digest
 from corinthos.context.redaction import redact, sanitize_text
@@ -232,6 +233,11 @@ def test_handoff_is_redacted_idempotent_and_retains_generation_cutoff(tmp_path):
     assert new.event_cutoff > old.event_cutoff and new.digest != old.digest
     assert handoffs.get(old.handoff_id) == old
     assert handoffs.list(item.work_item_id, source.session_id) == [new, old]
+    with handoffs.repository.read() as connection:
+        assert handoffs.for_source(connection, sessions.get(source.session_id)) == new
+    with pytest.raises(ContextError, match="generation changed"):
+        handoffs.create(source.session_id, generation=old.run_generation)
+    assert handoffs.create(source.session_id, generation=new.run_generation) == new
     assert work.get(item.work_item_id) == item
 
     context = ContextService(tmp_path)
@@ -247,6 +253,113 @@ def test_handoff_is_redacted_idempotent_and_retains_generation_cutoff(tmp_path):
         for table in ("context_projections", "context_projection_sources", "session_handoffs"):
             values = json.dumps(connection.execute(f"SELECT * FROM {table}").fetchall())
             assert "low_context_fixture" not in values and "low_handoff_fixture" not in values
+
+
+def _terminal_handoff(root, item, *, provider="codex"):
+    sessions = SessionRepository(root)
+    session = sessions.create(
+        item.work_item_id,
+        provider=provider,
+        owner_id="fixture-owner",
+        timeout_seconds=15,
+        envelope_sha256="a" * 64,
+    )
+    fence = session.session_id, session.owner_id, session.run_generation
+    sessions.running(*fence)
+    sessions.observe(*fence, "OUTPUT", {"text": "First useful observation."})
+    sessions.finish(*fence, "SUCCEEDED")
+    return HandoffService(root).create(session.session_id, generation=session.run_generation)
+
+
+def test_required_handoff_is_exact_and_replay_freezes_its_first_projection(tmp_path):
+    initialize(tmp_path)
+    work = WorkService(tmp_path)
+    item = _create(work, "Use the first exact handoff")
+    first = _terminal_handoff(tmp_path, item)
+    latest = _terminal_handoff(tmp_path, item)
+    service = ContextService(tmp_path)
+    normal = service.create(item.work_item_id, "claude")
+    assert "required_handoff_id" not in normal.canonical_payload
+    assert [
+        row.identity for row in service.sources(normal.projection_id) if row.reason == "HANDOFF"
+    ] == [latest.handoff_id]
+
+    def lookup():
+        with service.repository.read() as connection:
+            return service.switch_projection(
+                connection, item.project_id, item.work_item_id, "claude", first.handoff_id
+            )
+
+    assert lookup() is None
+    exact = service.create(item.work_item_id, "claude", required_handoff_id=first.handoff_id)
+    assert exact.canonical_payload["required_handoff_id"] == first.handoff_id
+    captures = service.sources(exact.projection_id)
+    assert captures[0].identity == item.work_item_id
+    required = [row for row in captures if row.reason == "HANDOFF"]
+    assert required == [captures[1]]
+    assert (
+        required[0].kind,
+        required[0].authority,
+        required[0].identity,
+        required[0].revision,
+    ) == (
+        "SESSION_HANDOFF",
+        "DERIVED",
+        first.handoff_id,
+        first.digest,
+    )
+    assert required[0].capture == first.canonical_payload
+    work.update(item.work_item_id, objective="Changed after the switch projection was sealed.")
+    assert (
+        lookup()
+        == service.create(item.work_item_id, "claude", required_handoff_id=first.handoff_id)
+        == exact
+    )
+    assert service.verify(exact.projection_id) == exact
+    assert service.create(item.work_item_id, "claude") != normal
+    unrelated = _create(work, "Other Work Item")
+    with pytest.raises(ContextError, match="does not match"):
+        service.create(unrelated.work_item_id, "claude", required_handoff_id=first.handoff_id)
+    with pytest.raises(ContextError, match="does not match"):
+        service.create(item.work_item_id, "codex", required_handoff_id=first.handoff_id)
+    with pytest.raises(ContextError, match="was not found"):
+        service.create(item.work_item_id, "claude", required_handoff_id="handoff-absent")
+
+
+def test_required_handoff_reserves_projection_capacity(tmp_path, monkeypatch):
+    initialize(tmp_path)
+    work = WorkService(tmp_path)
+    parent = _create(work, "Optional ancestor")
+    item = _create(work, "Budget test", parent_work_item_id=parent.work_item_id)
+    handoff = _terminal_handoff(tmp_path, item)
+    service = ContextService(tmp_path)
+    monkeypatch.setattr(context_projection, "MAX_SOURCES", 2)
+    ordinary = service.create(item.work_item_id, "claude")
+    assert [source.reason for source in service.sources(ordinary.projection_id)] == [
+        "WORK_ITEM",
+        "PARENT",
+    ]
+    exact = service.create(item.work_item_id, "claude", required_handoff_id=handoff.handoff_id)
+    assert [source.reason for source in service.sources(exact.projection_id)] == [
+        "WORK_ITEM",
+        "HANDOFF",
+    ]
+
+    too_large = _terminal_handoff(tmp_path, item)
+    monkeypatch.setattr(
+        context_projection,
+        "MAX_PROJECTION_BYTES",
+        len(canonical_bytes(exact.canonical_payload)) - 512,
+    )
+    with pytest.raises(ContextError, match="exceeds the Context budget"):
+        service.create(item.work_item_id, "claude", required_handoff_id=too_large.handoff_id)
+    with service.repository.read() as connection:
+        assert (
+            service.switch_projection(
+                connection, item.project_id, item.work_item_id, "claude", too_large.handoff_id
+            )
+            is None
+        )
 
 
 @pytest.mark.parametrize(

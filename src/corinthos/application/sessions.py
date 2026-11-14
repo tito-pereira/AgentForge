@@ -6,6 +6,7 @@ from dataclasses import asdict
 from corinthos.application.workspace import DEFAULT_LIMIT, _page, _page_args
 from corinthos.sessions.repository import SessionRepository
 from corinthos.sessions.supervisor import SessionSupervisor
+from corinthos.sessions.switch import ProviderSwitchService
 
 _SESSION_FIELDS = (
     "session_id",
@@ -44,6 +45,7 @@ def session_view(session):
 class SessionApplication:
     def __init__(self, supervisor=None):
         self.supervisor = SessionSupervisor() if supervisor is None else supervisor
+        self.switch = ProviderSwitchService(self.supervisor)
 
     def start(self, root, work_item_id, provider, **options):
         return session_view(self.supervisor.start(root, work_item_id, provider, **options))
@@ -73,3 +75,9 @@ class SessionApplication:
 
     def recover(self, root, session_id, **options):
         return session_view(self.supervisor.recover(root, session_id, **options))
+
+    def switch_status(self, root, source_session_id, target_provider, source_generation=None):
+        return self.switch.status(root, source_session_id, target_provider, source_generation)
+
+    def switch_execute(self, root, source_session_id, target_provider, source_generation=None):
+        return self.switch.execute(root, source_session_id, target_provider, source_generation)

@@ -138,7 +138,15 @@
     legacySession.click();
     if (!(await waitFor(() => valueFor(document.querySelector(".session-detail"), "State") === "SUCCEEDED")) ||
         document.querySelector(".session-projection")) return report("fail [binding]");
-    if (!startSessions) return report("pass");
+    if (!startSessions) {
+      const passiveTarget = document.querySelector("#switch-target-provider");
+      if (!passiveTarget) return report("fail [switch]");
+      setInput(passiveTarget, "claude");
+      if (!(await waitFor(() => text(document.querySelector(".switch-stage")) === "SOURCE_TERMINAL"))) {
+        return report("fail [switch]");
+      }
+      return report("pass");
+    }
 
     const details = () => document.querySelector(".session-detail");
     const state = () => valueFor(details(), "State");
@@ -158,7 +166,8 @@
       startButton().form.requestSubmit(startButton());
       return waitFor(() => {
         const id = text(details()?.querySelector("h4"));
-        return id && id !== previous && state() === "RUNNING" && event("OUTPUT") &&
+        return id && id !== previous && state() === "RUNNING" &&
+          text(details()?.querySelector(".session-events"))?.includes("Deterministic session output") &&
           Boolean(valueFor(details(), "Context projection")) &&
           sha256(valueFor(details(), "Context digest"));
       });
@@ -197,6 +206,57 @@
     if (!(await start(8))) return report("fail [start]");
     if (!(await waitFor(() => state() === "TIMED_OUT" && event("TIMED_OUT")))) {
       return report("fail [timeout]");
+    }
+    if (!(await start(90))) return report("fail [start]");
+    const sourceId = text(details()?.querySelector("h4"));
+    const switchPanel = () => document.querySelector(".provider-switch");
+    const switchStage = () => text(switchPanel()?.querySelector(".switch-stage"));
+    const switchButton = (label) => buttonNamed(".provider-switch button", label);
+    const target = switchPanel()?.querySelector("#switch-target-provider");
+    if (!target) return report("fail [switch]");
+    setInput(target, "claude");
+    if (!(await waitFor(() => switchStage() === "SOURCE_ACTIVE" &&
+          switchButton("Switch provider")?.matches(":enabled")))) return report("fail [switch]");
+    switchButton("Switch provider").click();
+    if (!(await waitFor(() => switchStage() === "SOURCE_TERMINAL" &&
+          valueFor(switchPanel(), "Source state") === "CANCELLED" &&
+          switchButton("Continue switch")?.matches(":enabled")))) return report("fail [switch]");
+    switchButton("Continue switch").click();
+
+    const targetSession = () => valueFor(switchPanel(), "Target session");
+    const targetReady = await waitFor(() => {
+      const id = targetSession();
+      return switchStage() === "TARGET_SESSION_TERMINAL" && Boolean(id) && id !== sourceId &&
+        valueFor(switchPanel(), "Source provider") === "codex" &&
+        valueFor(switchPanel(), "Work Item") === workId &&
+        valueFor(switchPanel(), "Target state") === "SUCCEEDED" &&
+        Boolean(valueFor(switchPanel(), "Source Handoff")) &&
+        sha256(valueFor(switchPanel(), "Handoff digest")) &&
+        Boolean(valueFor(switchPanel(), "Target Projection")) &&
+        sha256(valueFor(switchPanel(), "Projection digest"));
+    });
+    if (!targetReady) return report("fail [switch]");
+    const targetId = targetSession();
+    const targetProjection = valueFor(switchPanel(), "Target Projection");
+    const targetDigest = valueFor(switchPanel(), "Projection digest");
+    const replay = switchButton("Replay switch");
+    replay.click();
+    if (!(await waitFor(() => targetSession() === targetId &&
+          text(switchPanel()?.querySelector(".switch-replay-confirmed")) === "Existing target session confirmed." &&
+          switchButton("Open target session")?.matches(":enabled")))) return report("fail [replay]");
+    switchButton("Open target session").click();
+    if (!(await waitFor(() => text(details()?.querySelector("h4")) === targetId &&
+          state() === "SUCCEEDED" && valueFor(details(), "Provider") === "claude" &&
+          valueFor(details(), "Work Item") === workId))) {
+      return report("fail [target-selection]");
+    }
+    if (!(await waitFor(() => valueFor(details(), "Context projection") === targetProjection &&
+          valueFor(details(), "Context digest") === targetDigest))) {
+      return report("fail [target-context]");
+    }
+    if (!(await waitFor(() => text(details()?.querySelector(".session-events"))?.includes(
+          "Verified switch continuity from the source Handoff")))) {
+      return report("fail [target-output]");
     }
     if (!(await start(90))) return report("fail [start]");
     report("pass");

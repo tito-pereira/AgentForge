@@ -9,7 +9,7 @@ from threading import Event, Lock, Thread
 from time import monotonic
 from uuid import uuid4
 
-from corinthos.adapters import AdapterManager
+from corinthos.adapters import AdapterManager, SessionPlanError
 from corinthos.bootstrap import _root, adapter_manager
 from corinthos.contracts import ConflictError, ContractError
 from corinthos.contracts.model import canonical_json
@@ -17,8 +17,8 @@ from corinthos.project_status import _absolute_root
 from corinthos.providers import SUPPORTED_PROVIDERS
 from corinthos.work import WorkService
 
-from .model import SessionError
-from .ownership import project_owner
+from .model import TERMINAL_STATES, SessionError
+from .ownership import ProjectOwnerBusy, project_owner
 from .repository import SessionRepository
 
 _DEFAULT_TIMEOUT = 120
@@ -173,6 +173,41 @@ class SessionSupervisor:
                 run.cancel.set()
         return session
 
+    def preflight(self, root, provider, *, read_only):
+        root = _root(_absolute_root(root))
+        manager = self._manager_factory(root, operation_commands=None)
+        manager.session_plan(
+            provider,
+            root,
+            prompt="Verify native session capabilities.",
+            read_only=read_only,
+            prepare=False,
+            timeout=8,
+        )
+
+    def reconcile(self, root, session):
+        """Reconcile an expired fence only after acquiring native project ownership."""
+        root = _root(_absolute_root(root))
+        repository = SessionRepository(root)
+        try:
+            with project_owner(root):
+                return repository.reconcile_expired(
+                    session.session_id, owner_id=session.owner_id, generation=session.run_generation
+                )
+        except ProjectOwnerBusy:
+            return None
+
+    def start_switch(self, root, source, projection, handoff):
+        return self._launch(
+            root,
+            work_item_id=source.work_item_id,
+            provider=projection.target_provider,
+            instruction="",
+            read_only=source.read_only,
+            timeout_seconds=source.timeout_seconds,
+            continuation=(source, projection.projection_id, handoff),
+        )
+
     def _launch(
         self,
         root,
@@ -184,6 +219,7 @@ class SessionSupervisor:
         timeout_seconds=None,
         read_only=False,
         executable=None,
+        continuation=None,
     ):
         root = _root(_absolute_root(root))
         repository = SessionRepository(root)
@@ -205,12 +241,42 @@ class SessionSupervisor:
             work = WorkService(root).get(work_item_id)
             if work.status in {"COMPLETED", "CANCELLED"}:
                 raise SessionError("The Work Item is closed.")
-            from corinthos.context import ContextService
+            from corinthos.context import ContextService, HandoffService
             from corinthos.context.redaction import sanitize_text
 
             context_service = ContextService(root)
             projection = None
-            if original is None:
+            if continuation is not None:
+                source, projection_id, handoff = continuation
+                current = repository.get(source.session_id)
+                if (
+                    current.run_generation != source.run_generation
+                    or current.state not in TERMINAL_STATES
+                    or current.cleanup_unconfirmed
+                    or current.work_item_id != work_item_id
+                    or current.provider == provider
+                ):
+                    raise ConflictError("The source Agent Session changed before continuation.")
+                projection = context_service.verify(projection_id)
+                if (
+                    projection.project_id != current.project_id
+                    or projection.work_item_id != work_item_id
+                    or projection.target_provider != provider
+                    or projection.canonical_payload.get("required_handoff_id") != handoff.handoff_id
+                ):
+                    raise SessionError("The switch projection has inconsistent ownership.")
+                if current.native_session_id and (
+                    current.native_session_id.lower()
+                    in canonical_json(projection.canonical_payload).lower()
+                ):
+                    raise SessionError("The switch projection contains a source native identity.")
+                with repository._read() as connection:
+                    if HandoffService(root).for_source(connection, current) != handoff:
+                        raise ConflictError("The source Handoff changed before continuation.")
+                    target = repository.switch_target(connection, projection)
+                if target is not None:
+                    return target
+            elif original is None:
                 projection = context_service.create(work_item_id, provider)
             elif original.context_projection_id is not None:
                 projection = context_service.verify(original.context_projection_id)
@@ -316,7 +382,6 @@ class SessionSupervisor:
         )
 
     def _execute(self, key, run, prompt, executable, owner_fd, original, projection):
-        from corinthos.adapters.service import SessionPlanError
 
         root, _ = key
         session = run.session

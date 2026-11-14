@@ -82,6 +82,16 @@ _SESSION_OPERATIONS = {
     "session.events": ("events", ("root", "session_id"), ("limit", "after_sequence")),
     "session.cancel": ("cancel", ("root", "session_id"), ("generation",)),
     "session.recover": ("recover", ("root", "session_id"), ("instruction",)),
+    "switch.status": (
+        "switch_status",
+        ("root", "source_session_id", "target_provider"),
+        ("source_generation",),
+    ),
+    "switch.execute": (
+        "switch_execute",
+        ("root", "source_session_id", "target_provider"),
+        ("source_generation",),
+    ),
 }
 _MUTATIONS = {
     "context.create",
@@ -93,6 +103,7 @@ _MUTATIONS = {
     "session.start",
     "session.cancel",
     "session.recover",
+    "switch.execute",
 }
 _ERROR_MESSAGES = {
     -32700: "Parse error",

@@ -173,6 +173,18 @@ class ContextRepository:
         )
 
     @staticmethod
+    def switch_projection(connection, project_id, work_item_id, target_provider, handoff_id):
+        rows = connection.execute(
+            """SELECT * FROM context_projections WHERE work_item_id = ? AND project_id = ?
+               AND target_provider = ? AND json_extract(canonical_payload, '$.required_handoff_id') = ?
+               LIMIT 2""",
+            (work_item_id, project_id, target_provider, handoff_id),
+        ).fetchall()
+        if len(rows) > 1:
+            raise IntegrityError("More than one Context Projection is bound to this switch.")
+        return _projection(rows[0]) if rows else None
+
+    @staticmethod
     def list_projections(connection, work_item_id=None, limit=10, offset=0) -> list[Projection]:
         _page(limit, offset)
         where = "" if work_item_id is None else "WHERE work_item_id = ?"
@@ -232,6 +244,16 @@ class ContextRepository:
         return _handoff(
             connection.execute(
                 "SELECT * FROM session_handoffs WHERE handoff_id = ?", (handoff_id,)
+            ).fetchone()
+        )
+
+    @staticmethod
+    def handoff_for_event(connection, session_id, generation, cutoff):
+        return _handoff(
+            connection.execute(
+                """SELECT * FROM session_handoffs
+                   WHERE source_session_id = ? AND run_generation = ? AND event_cutoff = ?""",
+                (session_id, generation, cutoff),
             ).fetchone()
         )
 
