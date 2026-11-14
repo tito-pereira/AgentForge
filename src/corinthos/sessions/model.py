@@ -70,6 +70,7 @@ class Session:
     duration_ms: int | None
     reported_cost: str | None
     reported_cost_currency: str | None
+    context_projection_id: str | None = None
 
     @property
     def recoverable(self) -> bool:

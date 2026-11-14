@@ -11,6 +11,25 @@ _PAGE_BUDGET = 48 * 1024
 DEFAULT_LIMIT = 10
 MAX_LIMIT = 25
 MAX_OFFSET = 1_000_000
+_PROJECT_SUMMARY_FIELDS = (
+    "root",
+    "exists",
+    "is_directory",
+    "initialized",
+    "storage",
+    "schema_version",
+    "display_name",
+    "last_accessed_at",
+    "project_id",
+    "active_project",
+    "active_workflow",
+    "modules",
+    "technology_decisions",
+    "validation",
+    "lifecycle",
+    "work_items",
+    "unavailable_sources",
+)
 
 
 def _page_args(limit, offset):
@@ -56,8 +75,7 @@ def project_summary(root):
     from corinthos.project_state import ProjectStateService
 
     result = asdict(ProjectStateService().summary(root))
-    result.pop("sessions")
-    return result
+    return {key: result[key] for key in _PROJECT_SUMMARY_FIELDS}
 
 
 def project_open(root):
@@ -69,7 +87,7 @@ def project_open(root):
         raise StoreError("The project directory is unavailable.")
     if status.storage in {"INVALID", "UNVERIFIED"}:
         raise StoreError("The project state is unavailable.")
-    if status.schema_version in {6, 7}:
+    if status.schema_version in {6, 7, 8}:
         ContractStore(status.root)
     ProjectRegistryService().remember(status.root)
     return project_summary(status.root)

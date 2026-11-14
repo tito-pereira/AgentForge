@@ -214,10 +214,24 @@ fn private_runtime_repeated_cycles() {
         assert!(handshake.supports("projects.list"));
         assert!(handshake.supports("work.create"));
         assert!(handshake.supports("session.list"));
+        assert!(handshake.supports("context.list"));
+        assert!(handshake.supports("handoff.list"));
         assert!(
             child
                 .request("session.list", json!({"root": &root}))
                 .unwrap()["sessions"]
+                .is_array()
+        );
+        assert!(
+            child
+                .request("context.list", json!({"root": &root}))
+                .unwrap()["projections"]
+                .is_array()
+        );
+        assert!(
+            child
+                .request("handoff.list", json!({"root": &root}))
+                .unwrap()["handoffs"]
                 .is_array()
         );
         assert_eq!(child.version().unwrap(), json!({"version": "0.1.0"}));

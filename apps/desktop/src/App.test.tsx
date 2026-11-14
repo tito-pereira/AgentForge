@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import type { AgentSession, BackendSnapshot, ProjectEntry, ProjectSummary, WorkItem } from "./bridge";
+import type { AgentSession, BackendSnapshot, ContextProjection, ProjectEntry, ProjectSummary, SessionHandoff, WorkItem } from "./bridge";
 
 const { invoke, listen } = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
@@ -324,5 +324,103 @@ describe("desktop Agents", () => {
     await act(async () => lifecycle({ payload: { method: "backend.disconnected" } }));
     expect(host.textContent).toContain("Disconnected");
     expect(host.querySelector(".agents")).toBeNull();
+  });
+});
+
+describe("desktop Context audit", () => {
+  const contextMethods = [
+    "context.list", "context.create", "context.get", "context.sources", "context.verify",
+    "handoff.list", "handoff.create", "handoff.get", "session.list",
+  ];
+  const projection: ContextProjection = {
+    projection_id: "projection-1", project_id: "project", work_item_id: item.work_item_id,
+    target_provider: "codex", selector_policy_version: 1, redaction_policy_version: 1,
+    projection_digest: "a".repeat(64), source_set_digest: "b".repeat(64), created_at: item.updated_at,
+  };
+  const handoff: SessionHandoff = {
+    handoff_id: "handoff-1", project_id: "project", work_item_id: item.work_item_id,
+    source_session_id: "session-finished", run_generation: 2, event_cutoff: 14,
+    provider: "codex", terminal_state: "CANCELLED", digest: "c".repeat(64), created_at: item.updated_at,
+  };
+
+  function setup(invalid = false) {
+    let createdHandoff = false;
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "backend_snapshot") {
+        return { ...ready, handshake: { ...ready.handshake, methods: [...methods, ...contextMethods] } };
+      }
+      switch (payload.method) {
+        case "projects.list": return { projects: [legacy], next_offset: null };
+        case "project.open": return { ...summary, schema_version: 9 };
+        case "work.tree": return { nodes: [{ ...item, objective: "secret objective must not render", depth: 0 }], next_offset: null };
+        case "session.list": return { sessions: [], next_offset: null };
+        case "context.list": return { projections: [projection], next_offset: null };
+        case "context.create":
+        case "context.get": return projection;
+        case "context.sources": return { sources: [{
+          ordinal: 0, kind: "WORK_ITEM", authority: "OPERATIONAL", identity: item.work_item_id,
+          revision: item.updated_at, digest: "d".repeat(64), reason: "WORK_ITEM",
+          redaction: ["CREDENTIAL_ASSIGNMENT"], capture: "secret that must not render",
+        }], next_offset: null };
+        case "context.verify":
+          if (invalid) throw new Error("secret rejected detail");
+          return { ...projection, verified: true };
+        case "handoff.list": return { handoffs: createdHandoff ? [handoff] : [], next_offset: null };
+        case "handoff.create": createdHandoff = true;
+        case "handoff.get": return { ...handoff, payload: { note: "secret that must not render" } };
+        default: throw new Error("Unexpected method");
+      }
+    });
+  }
+
+  it("audits exact provenance, redaction and digest without exposing captures or probing providers", async () => {
+    setup();
+    await render();
+    await click("Open Project");
+    expect(invoke.mock.calls.some(([, payload]) => payload?.method === "context.list")).toBe(false);
+    await click("Context");
+    await click(projection.projection_id);
+    expect(host.querySelector(".context-sources")?.textContent).toContain("WORK_ITEM · OPERATIONAL");
+    expect(host.querySelector(".context-sources")?.textContent).toContain("CREDENTIAL_ASSIGNMENT");
+    expect(host.querySelector(".context-sources")?.textContent).toContain(item.updated_at);
+    expect(host.textContent).not.toContain("secret");
+    await click("Verify projection");
+    expect(host.querySelector(".projection-detail [role=status]")?.textContent).toBe("Verified");
+    expect(invoke.mock.calls).toContainEqual(["workspace_request", {
+      method: "context.verify", params: { root: legacy.root, projection_id: projection.projection_id },
+    }]);
+    expect(invoke.mock.calls.some(([, payload]) => payload?.method?.startsWith("providers."))).toBe(false);
+  });
+
+  it("creates a projection and handoff through explicit RPCs and displays only handoff provenance", async () => {
+    setup();
+    await render();
+    await click("Open Project");
+    await click("Context");
+    await field("#context-work", item.work_item_id);
+    await field("#context-provider", "codex");
+    await click("Create projection");
+    expect(invoke.mock.calls).toContainEqual(["workspace_request", {
+      method: "context.create", params: { root: legacy.root, work_item_id: item.work_item_id, provider: "codex" },
+    }]);
+    await field("#handoff-session", handoff.source_session_id);
+    await click("Create handoff");
+    expect(invoke.mock.calls).toContainEqual(["workspace_request", {
+      method: "handoff.create", params: { root: legacy.root, session_id: handoff.source_session_id },
+    }]);
+    expect(host.querySelector(".handoff-detail")?.textContent).toContain("Event cutoff14");
+    expect(host.querySelector(".handoff-detail")?.textContent).toContain("AuthorityDERIVED");
+    expect(host.textContent).not.toContain("secret");
+  });
+
+  it("reports a verification failure without displaying backend error data", async () => {
+    setup(true);
+    await render();
+    await click("Open Project");
+    await click("Context");
+    await click(projection.projection_id);
+    await click("Verify projection");
+    expect(host.querySelector(".projection-detail [role=status]")?.textContent).toBe("Verification failed");
+    expect(host.textContent).not.toContain("secret rejected detail");
   });
 });

@@ -28,9 +28,10 @@ from .schema import validate_schema
 from .semantics import validate_semantics
 
 _APPLICATION_ID = 0x4E554B59
-_SCHEMA_VERSION = 8
+_SCHEMA_VERSION = 9
 _LOCK_TIMEOUT = 5.0
 _BUSY_CODES = {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
+_BUSY_MESSAGE = "The state database is busy. Retry with the current revision."
 _ACTIVE_TYPES = frozenset({"PROJECT", "WORKFLOW", "MODULE", "TECHNOLOGY_DECISION", "VALIDATION"})
 _MIGRATION_V1 = (
     """CREATE TABLE contracts (
@@ -610,6 +611,109 @@ _MIGRATION_V8 = (
        BEGIN SELECT RAISE(ABORT, 'Agent Session events are append-only'); END""",
 )
 
+_PROJECTION_COLUMN = "context_projection_id TEXT REFERENCES context_projections (projection_id)"
+_MIGRATION_V9 = (
+    """CREATE TABLE context_projections (
+        projection_id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL,
+        work_item_id TEXT NOT NULL,
+        target_provider TEXT NOT NULL CHECK (length(target_provider) BETWEEN 1 AND 128),
+        selector_policy_version INTEGER NOT NULL CHECK (selector_policy_version BETWEEN 1 AND 9007199254740991),
+        redaction_policy_version INTEGER NOT NULL CHECK (redaction_policy_version BETWEEN 1 AND 9007199254740991),
+        canonical_payload TEXT NOT NULL CHECK (length(CAST(canonical_payload AS BLOB)) BETWEEN 2 AND 131072),
+        projection_digest TEXT UNIQUE NOT NULL CHECK (length(projection_digest) = 64),
+        source_set_digest TEXT NOT NULL CHECK (length(source_set_digest) = 64),
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (project_id, work_item_id) REFERENCES work_items (project_id, work_item_id)
+    )""",
+    """CREATE INDEX context_projections_work ON context_projections
+       (work_item_id, created_at DESC, projection_id DESC)""",
+    """CREATE TABLE context_projection_sources (
+        projection_id TEXT NOT NULL REFERENCES context_projections (projection_id) DEFERRABLE INITIALLY DEFERRED,
+        ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 256),
+        kind TEXT NOT NULL CHECK (length(kind) BETWEEN 1 AND 128),
+        authority TEXT NOT NULL CHECK (authority IN ('CANONICAL', 'OPERATIONAL', 'DERIVED')),
+        identity TEXT NOT NULL CHECK (length(identity) BETWEEN 1 AND 512),
+        revision TEXT CHECK (length(revision) BETWEEN 1 AND 512),
+        digest TEXT NOT NULL CHECK (length(digest) = 64),
+        reason TEXT NOT NULL CHECK (length(reason) BETWEEN 1 AND 128),
+        redaction TEXT NOT NULL CHECK (length(CAST(redaction AS BLOB)) BETWEEN 2 AND 2048),
+        capture TEXT NOT NULL CHECK (length(CAST(capture AS BLOB)) BETWEEN 2 AND 131072),
+        PRIMARY KEY (projection_id, ordinal)
+    )""",
+    """CREATE TABLE session_handoffs (
+        handoff_id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL,
+        work_item_id TEXT NOT NULL,
+        source_session_id TEXT NOT NULL REFERENCES agent_sessions (session_id),
+        run_generation INTEGER NOT NULL CHECK (run_generation BETWEEN 1 AND 9007199254740991),
+        provider TEXT NOT NULL CHECK (length(provider) BETWEEN 1 AND 128),
+        terminal_state TEXT NOT NULL CHECK (terminal_state IN (
+            'SUCCEEDED', 'FAILED', 'CANCELLED', 'TIMED_OUT', 'INTERRUPTED'
+        )),
+        event_cutoff INTEGER NOT NULL CHECK (event_cutoff BETWEEN 1 AND 9007199254740991),
+        canonical_payload TEXT NOT NULL CHECK (length(CAST(canonical_payload AS BLOB)) BETWEEN 2 AND 131072),
+        digest TEXT NOT NULL CHECK (length(digest) = 64),
+        created_at TEXT NOT NULL,
+        UNIQUE (source_session_id, run_generation, event_cutoff),
+        FOREIGN KEY (project_id, work_item_id) REFERENCES work_items (project_id, work_item_id),
+        FOREIGN KEY (source_session_id, event_cutoff) REFERENCES agent_session_events (session_id, sequence)
+    )""",
+    """CREATE INDEX session_handoffs_work ON session_handoffs
+       (work_item_id, created_at DESC, handoff_id DESC)""",
+    f"ALTER TABLE agent_sessions ADD COLUMN {_PROJECTION_COLUMN}",
+    """CREATE TRIGGER agent_sessions_projection_on_insert BEFORE INSERT ON agent_sessions
+       WHEN NEW.context_projection_id IS NOT NULL AND NOT EXISTS (
+           SELECT 1 FROM context_projections
+           WHERE projection_id = NEW.context_projection_id AND project_id = NEW.project_id
+                 AND work_item_id = NEW.work_item_id AND target_provider = NEW.provider
+       )
+       BEGIN SELECT RAISE(ABORT, 'Agent Session projection identity changed'); END""",
+    """CREATE TRIGGER agent_sessions_projection_immutable BEFORE UPDATE ON agent_sessions
+       WHEN NEW.context_projection_id IS NOT OLD.context_projection_id
+       BEGIN SELECT RAISE(ABORT, 'Agent Session context projection is immutable'); END""",
+    """CREATE TRIGGER context_projections_no_replace BEFORE INSERT ON context_projections
+       WHEN EXISTS (
+           SELECT 1 FROM context_projections
+           WHERE projection_id = NEW.projection_id OR projection_digest = NEW.projection_digest
+       )
+       BEGIN SELECT RAISE(ABORT, 'Context Projection is immutable'); END""",
+    """CREATE TRIGGER context_sources_sealed BEFORE INSERT ON context_projection_sources
+       WHEN EXISTS (SELECT 1 FROM context_projections WHERE projection_id = NEW.projection_id)
+       BEGIN SELECT RAISE(ABORT, 'Context Projection sources are sealed'); END""",
+    """CREATE TRIGGER handoffs_source_matches BEFORE INSERT ON session_handoffs
+       WHEN NOT EXISTS (
+           SELECT 1 FROM agent_sessions AS s
+           JOIN agent_session_events AS e ON e.session_id = s.session_id
+           WHERE s.session_id = NEW.source_session_id AND s.project_id = NEW.project_id
+                 AND s.cleanup_unconfirmed = 0
+                 AND s.work_item_id = NEW.work_item_id AND s.provider = NEW.provider
+                 AND s.state = NEW.terminal_state AND s.run_generation = NEW.run_generation
+                 AND e.sequence = NEW.event_cutoff AND e.run_generation = NEW.run_generation
+                 AND e.kind = CASE WHEN s.state IN ('SUCCEEDED', 'FAILED')
+                                   THEN 'SESSION_FINISHED' ELSE s.state END
+                 AND NOT EXISTS (
+                     SELECT 1 FROM agent_session_events AS later
+                     WHERE later.session_id = s.session_id AND later.sequence > NEW.event_cutoff
+                 )
+       )
+       BEGIN SELECT RAISE(ABORT, 'Session Handoff source is unavailable'); END""",
+    """CREATE TRIGGER handoffs_no_replace BEFORE INSERT ON session_handoffs
+       WHEN EXISTS (
+           SELECT 1 FROM session_handoffs WHERE handoff_id = NEW.handoff_id OR (
+               source_session_id = NEW.source_session_id AND run_generation = NEW.run_generation
+               AND event_cutoff = NEW.event_cutoff
+           )
+       )
+       BEGIN SELECT RAISE(ABORT, 'Session Handoff is immutable'); END""",
+    *(
+        f"CREATE TRIGGER {table}_no_{operation.lower()} BEFORE {operation} ON {table}\n"
+        "       BEGIN SELECT RAISE(ABORT, 'Derived context history is immutable'); END"
+        for table in ("context_projections", "context_projection_sources", "session_handoffs")
+        for operation in ("UPDATE", "DELETE")
+    ),
+)
+
 _SUPPORTED_VERSIONS = range(1, _SCHEMA_VERSION + 1)
 _REQUIRED_TABLES_V6 = _REQUIRED_TABLES_V5 | {"lc_records", "lc_projects", "lc_events"}
 _REQUIRED_TABLES_V7 = _REQUIRED_TABLES_V6 | {
@@ -617,7 +721,12 @@ _REQUIRED_TABLES_V7 = _REQUIRED_TABLES_V6 | {
     "work_item_dependencies",
     "work_item_modules",
 }
-_REQUIRED_TABLES = _REQUIRED_TABLES_V7 | {"agent_sessions", "agent_session_events"}
+_REQUIRED_TABLES_V8 = _REQUIRED_TABLES_V7 | {"agent_sessions", "agent_session_events"}
+_REQUIRED_TABLES = _REQUIRED_TABLES_V8 | {
+    "context_projections",
+    "context_projection_sources",
+    "session_handoffs",
+}
 _REVISIONS = """SELECT revisions.*, contracts.contract_type, contracts.project_id,
                 contracts.active_revision_id
                 FROM revisions JOIN contracts USING (contract_id)"""
@@ -652,22 +761,28 @@ def _verify_database(connection: sqlite3.Connection, version: int) -> None:
         5: _REQUIRED_TABLES_V5,
         6: _REQUIRED_TABLES_V6,
         7: _REQUIRED_TABLES_V7,
-        8: _REQUIRED_TABLES,
+        8: _REQUIRED_TABLES_V8,
+        9: _REQUIRED_TABLES,
     }[version]
     if not required <= tables:
         raise StoreError("The state database schema is incomplete.")
     if version >= 7:
-        _verify_migration_schema(connection, version)
+        _verify_migration_schema(connection, version, exact=version == 8)
     if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
         raise StoreError("The state database failed its integrity check.")
     if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
         raise StoreError("The state database failed its foreign-key integrity check.")
 
 
-def _verify_migration_schema(connection: sqlite3.Connection, version: int) -> None:
+def _verify_migration_schema(
+    connection: sqlite3.Connection, version: int, *, exact: bool = False
+) -> None:
     """Verify the original definitions survive before and after verified migrations."""
     actual = {
-        row[0] for row in connection.execute("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL")
+        row[0]
+        for row in connection.execute(
+            "SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL AND substr(name, 1, 7) <> 'sqlite_'"
+        )
     }
     expected = {
         *_MIGRATION_V1,
@@ -681,7 +796,19 @@ def _verify_migration_schema(connection: sqlite3.Connection, version: int) -> No
         expected.update(_MIGRATION_V7)
     if version >= 8:
         expected.update(_MIGRATION_V8)
-    if not expected <= actual:
+    if version >= 9:
+        # SQLite places ADD COLUMN immediately before the first table constraint.
+        session_table = _MIGRATION_V8[0]
+        expected.remove(session_table)
+        expected.add(
+            session_table.replace(
+                ",\n        CHECK ((owner_id IS NULL)",
+                f", {_PROJECTION_COLUMN},\n        CHECK ((owner_id IS NULL)",
+                1,
+            )
+        )
+        expected.update(sql for sql in _MIGRATION_V9 if not sql.startswith("ALTER TABLE "))
+    if not expected <= actual or (exact and expected != actual):
         raise StoreError("The state database has missing or altered schema definitions.")
 
 
@@ -722,17 +849,21 @@ def _check_database_files(database: Path, *, allow_existing: bool = True) -> Non
             raise ConflictError("A state backup already exists or has existing sidecars.")
 
 
+class _WriteLockBusy(ConflictError):
+    """The write transaction did not start and can be attempted again."""
+
+
 class ContractStore:
     """Open or initialize the state database under an existing project directory."""
 
-    def __init__(self, project_root: str | Path):
+    def __init__(self, project_root: str | Path, *, _write_lock_timeout: float | None = None):
         try:
             self._project_root = Path(project_root).resolve(strict=True)
             state = private_directory(self._project_root, create=True)
         except (IntegrityError, OSError, RuntimeError):
             raise StoreError("Cannot open the private project state directory.") from None
         self._database_path = state / "state.db"
-        with self._transaction(create=True) as connection:
+        with self._transaction(create=True, lock_timeout=_write_lock_timeout) as connection:
             self._migrate(connection)
 
     @property
@@ -889,9 +1020,7 @@ class ContractStore:
             code = getattr(error, "sqlite_errorcode", 0)
             primary_code = code & 255
             if primary_code in _BUSY_CODES:
-                raise ConflictError(
-                    "The state database is busy. Retry with the current revision."
-                ) from None
+                raise ConflictError(_BUSY_MESSAGE) from None
             if primary_code == sqlite3.SQLITE_READONLY:
                 raise StoreError("The state database is read-only.") from None
             if primary_code in {sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB}:
@@ -903,10 +1032,23 @@ class ContractStore:
             raise StoreError("Cannot access private state database files.") from None
 
     @contextmanager
-    def _transaction(self, *, create: bool = False) -> Iterator[sqlite3.Connection]:
+    def _transaction(
+        self, *, create: bool = False, lock_timeout: float | None = None
+    ) -> Iterator[sqlite3.Connection]:
         with self._connection(create=create) as connection:
-            connection.execute("BEGIN IMMEDIATE")
+            if lock_timeout is not None:
+                connection.execute(f"PRAGMA busy_timeout = {int(lock_timeout * 1000)}")
             try:
+                connection.execute("BEGIN IMMEDIATE")
+            except sqlite3.Error as error:
+                primary_code = getattr(error, "sqlite_errorcode", 0) & 255
+                if lock_timeout is not None and primary_code in _BUSY_CODES:
+                    raise _WriteLockBusy(_BUSY_MESSAGE) from None
+                raise
+            try:
+                if lock_timeout is not None:
+                    # Keep the usual wait for readers when committing the acquired write.
+                    connection.execute(f"PRAGMA busy_timeout = {int(_LOCK_TIMEOUT * 1000)}")
                 yield connection
                 connection.execute("COMMIT")
             except BaseException:
@@ -962,6 +1104,9 @@ class ContractStore:
                 connection.execute(statement)
         if version < 8:
             for statement in _MIGRATION_V8:
+                connection.execute(statement)
+        if version < 9:
+            for statement in _MIGRATION_V9:
                 connection.execute(statement)
         connection.execute(f"PRAGMA application_id = {_APPLICATION_ID}")
         connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")

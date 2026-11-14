@@ -117,6 +117,42 @@ interface SessionStart {
   instruction?: string;
 }
 
+export interface ContextProjection {
+  projection_id: string;
+  project_id: string;
+  work_item_id: string;
+  target_provider: string;
+  selector_policy_version: number;
+  redaction_policy_version: number;
+  projection_digest: string;
+  source_set_digest: string;
+  created_at: string;
+}
+
+export interface ContextSource {
+  ordinal: number;
+  kind: string;
+  authority: "CANONICAL" | "OPERATIONAL" | "DERIVED";
+  identity: string;
+  revision: string | null;
+  digest: string;
+  reason: string;
+  redaction: string[];
+}
+
+export interface SessionHandoff {
+  handoff_id: string;
+  project_id: string;
+  work_item_id: string;
+  source_session_id: string;
+  run_generation: number;
+  event_cutoff: number;
+  provider: string;
+  terminal_state: string;
+  digest: string;
+  created_at: string;
+}
+
 let pending: Promise<unknown> = Promise.resolve();
 
 function request<T>(method: string, params: object) {
@@ -162,6 +198,28 @@ export const bridge = {
     request<AgentSession>("session.cancel", { root, session_id, generation }),
   sessionRecover: (root: string, session_id: string, instruction?: string) =>
     request<AgentSession>("session.recover", { root, session_id, ...(instruction ? { instruction } : {}) }),
+  projections: (root: string, offset: number, work_item_id?: string) =>
+    request<{ projections: ContextProjection[]; next_offset: number | null }>("context.list", {
+      root, offset, ...(work_item_id ? { work_item_id } : {}),
+    }),
+  contextCreate: (root: string, work_item_id: string, provider: string) =>
+    request<ContextProjection>("context.create", { root, work_item_id, provider }),
+  contextGet: (root: string, projection_id: string) =>
+    request<ContextProjection>("context.get", { root, projection_id }),
+  contextVerify: (root: string, projection_id: string) =>
+    request<ContextProjection & { verified: boolean }>("context.verify", { root, projection_id }),
+  contextSources: (root: string, projection_id: string, offset: number) =>
+    request<{ sources: ContextSource[]; next_offset: number | null }>("context.sources", { root, projection_id, offset }),
+  contextForSession: (root: string, session_id: string) =>
+    request<{ projection: ContextProjection | null }>("context.for_session", { root, session_id }),
+  handoffs: (root: string, offset: number, work_item_id?: string) =>
+    request<{ handoffs: SessionHandoff[]; next_offset: number | null }>("handoff.list", {
+      root, offset, ...(work_item_id ? { work_item_id } : {}),
+    }),
+  handoffCreate: (root: string, session_id: string) =>
+    request<SessionHandoff>("handoff.create", { root, session_id }),
+  handoffGet: (root: string, handoff_id: string) =>
+    request<SessionHandoff>("handoff.get", { root, handoff_id }),
 
   restart: () => invoke<BackendSnapshot>("restart_backend"),
   onDisconnect: (handler: () => void) =>

@@ -63,8 +63,12 @@ def test_real_populated_v7_upgrade_keeps_history_and_pre_v7_backups(populated_v7
     with ThreadPoolExecutor(max_workers=2) as pool:
         stores = list(pool.map(ContractStore, (populated_v7, populated_v7)))
     (backup,) = database.parent.glob("state.pre-v8-*.db")
-    assert _version(database) == 8 and _version(backup) == 7
-    assert _tables(database) == _tables(backup) | _V8
+    assert _version(database) == 9 and _version(backup) == 7
+    assert _tables(database) == _tables(backup) | _V8 | {
+        "context_projections",
+        "context_projection_sources",
+        "session_handoffs",
+    }
     assert _records(database, _TABLES_V7) == _records(backup, _TABLES_V7) == expected
     assert _artifacts(populated_v7) == artifacts
     assert old_backup.read_bytes() == b"Preserved previous backup"
@@ -117,7 +121,7 @@ def test_invalid_v7_migration_input_is_never_rewritten(real_v7, replacement, mes
     original_mode = database.stat().st_mode
     sql = {
         "foreign": "PRAGMA application_id = 1",
-        "future": "PRAGMA user_version = 9",
+        "future": "PRAGMA user_version = 10",
         "schema": "DROP INDEX work_items_parent",
         "foreign-key": """
             UPDATE work_item_dependencies SET dependency_id = 'missing'

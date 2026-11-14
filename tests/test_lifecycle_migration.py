@@ -30,7 +30,7 @@ def test_real_v5_legacy_directory_copy_precedes_independent_v6_upgrade(populated
     assert (private / "state.db").read_bytes() == original
     assert _version(private / "state.db") == 5
     ContractStore(populated_v5)
-    assert _version(private / "state.db") == 8
+    assert _version(private / "state.db") == 9
     assert _records(private / "state.db", _TABLES_V5) == before
     assert (legacy / "state.db").read_bytes() == original
 
@@ -117,7 +117,7 @@ def test_populated_v5_upgrade_preserves_all_twenty_tables_and_report_artifacts(p
     before, artifacts = _records(database, _TABLES_V5), _artifacts(populated_v5)
     assert len(before) == 20 and all(before.values()) and artifacts
     store = ContractStore(populated_v5)
-    assert _version(database) == 8 and _records(database, _TABLES_V5) == before
+    assert _version(database) == 9 and _records(database, _TABLES_V5) == before
     assert _artifacts(populated_v5) == artifacts
     (backup,) = database.parent.glob("state.pre-v6-*.db")
     assert _version(backup) == 5 and _records(backup, _TABLES_V5) == before
@@ -151,7 +151,7 @@ def test_failed_v6_upgrade_rolls_back_and_reopens_actual_v5(populated_v5, monkey
     (backup,) = database.parent.glob("state.pre-v6-*.db")
     assert _version(backup) == 5 and _records(backup, _TABLES_V5) == before
     assert ContractStore(populated_v5).list_events()
-    assert _version(database) == 8 and _records(database, _TABLES_V5) == before
+    assert _version(database) == 9 and _records(database, _TABLES_V5) == before
 
 
 def test_concurrent_v6_openers_preserve_history_and_one_inspected_backup(populated_v5):
@@ -159,7 +159,7 @@ def test_concurrent_v6_openers_preserve_history_and_one_inspected_backup(populat
     before, artifacts = _records(database, _TABLES_V5), _artifacts(populated_v5)
     with ThreadPoolExecutor(max_workers=2) as pool:
         stores = list(pool.map(ContractStore, (populated_v5, populated_v5)))
-    assert len(stores) == 2 and _version(database) == 8
+    assert len(stores) == 2 and _version(database) == 9
     assert _records(database, _TABLES_V5) == before and _artifacts(populated_v5) == artifacts
     assert len(list(database.parent.glob("state.pre-v6-*.db"))) == 1
 
@@ -178,7 +178,7 @@ def test_populated_current_backup_restores_history_and_artifacts_in_another_root
     before = _records(store.database_path, tables)
     artifacts = _artifacts(populated_v5)
     backup = store.backup()
-    assert _version(backup) == 8 and _records(backup, tables) == before
+    assert _version(backup) == 9 and _records(backup, tables) == before
     recovered_root = populated_v5.parent / "separate-recovery"
     private = recovered_root / ".corinthos"
     private.mkdir(parents=True, mode=0o700)

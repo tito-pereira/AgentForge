@@ -152,7 +152,7 @@ def test_v2_create_and_read_use_real_backend_and_schemas(initialized_root, wire)
     assert messages[5]["result"]["items"] == [item]
     assert messages[6]["result"]["nodes"][0]["work_item_id"] == item["work_item_id"]
     summary = messages[7]["result"]
-    assert summary["schema_version"] == 8
+    assert summary["schema_version"] == 9
     assert summary["active_project"] is None
     assert summary["work_items"]["total"] == 1
 

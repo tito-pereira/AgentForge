@@ -12,12 +12,14 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from math import isfinite
 from pathlib import Path
+from time import sleep
 from uuid import uuid4
 
 from corinthos.bootstrap import _root
 from corinthos.contracts import ConflictError, ContractStore
 from corinthos.contracts.artifacts import private_directory
 from corinthos.contracts.model import ID_PATTERN, canonical_json
+from corinthos.contracts.store import _WriteLockBusy
 from corinthos.project_status import _absolute_root
 
 from .model import (
@@ -34,6 +36,8 @@ from .model import (
 
 _ACTIVE = "state IN ('STARTING', 'RUNNING', 'CANCELLING')"
 _MAX_INTEGER = 2**53 - 1
+_CANCEL_WRITE_TIMEOUT = 0.1
+_CANCEL_RETRY_DELAYS = (0.025, 0.05, 0.1)
 MAX_EVENT_BYTES = 4096
 MAX_PAGE_SIZE = 25
 _SESSION_ID = re.compile(r"session-[0-9a-f]{32}")
@@ -178,17 +182,17 @@ class SessionRepository:
             yield connection if version is not None and version >= 8 else None
 
     @contextmanager
-    def _write(self):
+    def _write(self, *, lock_timeout=None):
         root = self._project()
         if root is None or not os.path.lexists(root / ".corinthos"):
             raise SessionError("An existing local Work Item is required.")
         if not (private_directory(root) / "state.db").is_file():
             raise SessionError("An existing local Work Item is required.")
         if self._store is None:
-            self._store = ContractStore(root)
+            self._store = ContractStore(root, _write_lock_timeout=lock_timeout)
         elif root != self._store.database_path.parent.parent:
             raise ConflictError("The Agent Session project root changed.")
-        with self._store._transaction() as connection:
+        with self._store._transaction(lock_timeout=lock_timeout) as connection:
             yield connection
 
     @staticmethod
@@ -251,6 +255,7 @@ class SessionRepository:
         lease_seconds=30,
         native_resume=False,
         read_only=True,
+        context_projection_id=None,
     ) -> Session:
         _identifier(work_item_id, _WORK_ID)
         _identifier(provider)
@@ -261,6 +266,8 @@ class SessionRepository:
             raise SessionError("Use an Agent Session timeout between 1 and 3600 seconds.")
         if type(native_resume) is not bool or type(read_only) is not bool:
             raise SessionError("The Agent Session execution mode is invalid.")
+        if context_projection_id is not None:
+            _identifier(context_projection_id)
         session_id = f"session-{uuid4().hex}"
         with self._write() as connection:
             now = self.now()
@@ -275,8 +282,8 @@ class SessionRepository:
                 """INSERT INTO agent_sessions (
                     session_id, project_id, work_item_id, provider, read_only, native_resume,
                     envelope_sha256, state, run_generation, owner_id, lease_expires_at,
-                    timeout_seconds, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'STARTING', 1, ?, ?, ?, ?, ?)""",
+                    timeout_seconds, created_at, updated_at, context_projection_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'STARTING', 1, ?, ?, ?, ?, ?, ?)""",
                 (
                     session_id,
                     work["project_id"],
@@ -290,6 +297,7 @@ class SessionRepository:
                     timeout_seconds,
                     _timestamp(now),
                     _timestamp(now),
+                    context_projection_id,
                 ),
             )
             row = self._row(connection, session_id)
@@ -410,7 +418,18 @@ class SessionRepository:
         _identifier(session_id, _SESSION_ID)
         if generation is not None and (type(generation) is not int or generation < 1):
             raise SessionError("The Agent Session generation is invalid.")
-        with self._write() as connection:
+        for delay in _CANCEL_RETRY_DELAYS:
+            try:
+                return self._request_cancel(
+                    session_id, generation, lock_timeout=_CANCEL_WRITE_TIMEOUT
+                )
+            except _WriteLockBusy:
+                sleep(delay)
+        # Keep the original SQLite wait once, after the short acquisition attempts.
+        return self._request_cancel(session_id, generation, lock_timeout=None)
+
+    def _request_cancel(self, session_id, generation, *, lock_timeout) -> Session:
+        with self._write(lock_timeout=lock_timeout) as connection:
             now = self.now()
             row = self._row(connection, session_id)
             if (

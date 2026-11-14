@@ -802,6 +802,368 @@
           "id"
         ]
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "context.create"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              },
+              "provider": {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "root",
+              "work_item_id",
+              "provider"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params",
+          "id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "context.get"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1
+              },
+              "projection_id": {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "root",
+              "projection_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "context.verify"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1
+              },
+              "projection_id": {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "root",
+              "projection_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "context.sources"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1
+              },
+              "projection_id": {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 25
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "root",
+              "projection_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "context.list"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 25
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "root"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "context.for_session"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1
+              },
+              "session_id": {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "root",
+              "session_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "handoff.create"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1
+              },
+              "session_id": {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "root",
+              "session_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params",
+          "id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "handoff.get"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1
+              },
+              "handoff_id": {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "root",
+              "handoff_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "handoff.list"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              },
+              "session_id": {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 25
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "root"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
     }
   ]
 }

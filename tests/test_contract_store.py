@@ -94,7 +94,7 @@ def test_migration_publication_and_history_survive_reopen(tmp_path, project):
     assert [event["previous_revision_id"] for event in events] == [None, first.revision_id]
     assert all(event["activated"] is True for event in events)
     with closing(sqlite3.connect(reopened.database_path)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (8,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (9,)
         assert connection.execute("SELECT * FROM contract_references").fetchall() == [
             (second.revision_id, first.revision_id)
         ]

@@ -196,7 +196,7 @@ def test_project_summary_is_read_only_and_projects_exact_owner_data(setup, user,
     monkeypatch.setattr("corinthos.adapters.service.AdapterManager.discover", unexpected)
     monkeypatch.setattr("corinthos.adapters.service.AdapterManager.probe", unexpected)
     summary = ProjectStateService().summary(root)
-    assert (summary.initialized, summary.storage, summary.schema_version) == (True, "CURRENT", 8)
+    assert (summary.initialized, summary.storage, summary.schema_version) == (True, "CURRENT", 9)
     assert summary.project_id == project_id
     assert summary.active_project.contract_type == ContractType.PROJECT
     assert summary.active_workflow.contract_type == ContractType.WORKFLOW
