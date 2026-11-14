@@ -393,6 +393,7 @@ assert current[1:] == backup[1:]
 
     $project = Join-Path $root 'adaptive-project'
     $null = Invoke-PrivatePython $paths.Install @('-m', 'corinthos', 'init', $project)
+    Invoke-PrivatePython $paths.Install @('-c', 'import sys; from corinthos.contracts import ContractStore; ContractStore(sys.argv[1])', $project)
     $codexBefore = (Get-FileHash -LiteralPath $configuredLog).Hash
     $claudeBefore = (Get-FileHash -LiteralPath $claudeLog).Hash
     Invoke-DesktopFixture 'adaptive-passive'

@@ -50,11 +50,15 @@
     const projectForm = document.querySelector("#project-root");
     setInput(projectForm, projectRoot);
     const openProject = () => buttonNamed("form button", "Open project");
-    if (!(await waitFor(() => openProject()?.matches(":enabled")))) return report("fail [adaptive-project]");
+    if (!(await waitFor(() => openProject()?.matches(":enabled")))) return report("fail [adaptive-open-form]");
     openProject().form.requestSubmit(openProject());
-    if (!(await waitFor(() => valueFor(summary(), "Storage") === "Current · v9" &&
-      document.querySelector("#work-objective")?.matches(":enabled")))) {
-      return report("fail [adaptive-project]");
+    if (!(await waitFor(() => {
+      const path = text(summary()?.querySelector("code"));
+      return path && normalizeWindowsPath(path) === normalizeWindowsPath(projectRoot);
+    }))) return report("fail [adaptive-open-project]");
+    if (valueFor(summary(), "Storage") !== "Current · v9") return report("fail [adaptive-storage]");
+    if (!(await waitFor(() => document.querySelector("#work-objective")?.matches(":enabled")))) {
+      return report("fail [adaptive-work-view]");
     }
 
     if (mode === "adaptive-passive") {
@@ -66,11 +70,12 @@
         create().form.requestSubmit(create());
         return waitFor(() => treeItem(objective)?.matches(":enabled"));
       }
-      if (!(await createWork(adaptiveProject, "PROJECT")) || !(await waitFor(() =>
+      if (!(await createWork(adaptiveProject, "PROJECT"))) return report("fail [adaptive-create-project]");
+      if (!(await waitFor(() =>
         facts("Selected scope") === "PROJECT" && facts("Stage") === "PLANNING_REQUIRED" &&
         facts("Validation") !== "VERIFIED" && !action("Start adaptive workflow") &&
-        text(panel())?.includes("PLANNING"),
-      ))) return report("fail [adaptive-project]");
+        text(panel())?.includes("corinthos workflow plan"),
+      ))) return report("fail [adaptive-planning-gate]");
       if (!(await createWork(adaptiveTask, "TASK"))) return report("fail [adaptive-task]");
     } else {
       if (!(await waitFor(() => treeItem(adaptiveTask)?.matches(":enabled")))) {
