@@ -40,9 +40,11 @@ _PRIORITIES = {
 }
 
 
-def source_key(source):
+def source_key(source, *, required_handoff_id=None):
+    required = source.reason == "HANDOFF" and source.identity == required_handoff_id
+    priority = _PRIORITIES["WORK_ITEM" if required else source.reason]
     distance = source.capture.get("distance", 0) if source.reason in {"PARENT", "DEPENDENCY"} else 0
-    return _PRIORITIES[source.reason], distance, source.kind, source.identity, source.revision or ""
+    return priority, required, distance, source.kind, source.identity, source.revision or ""
 
 
 def _source(kind, authority, identity, revision, reason, raw):
@@ -63,6 +65,17 @@ def _source(kind, authority, identity, revision, reason, raw):
         }
         redaction = tuple(sorted({*redaction, "CAPTURE_BUDGET"}))
     return Source(0, kind, authority, identity, revision, digest(clean), reason, redaction, clean)
+
+
+def handoff_source(record):
+    return _source(
+        "SESSION_HANDOFF",
+        "DERIVED",
+        record.handoff_id,
+        record.digest,
+        "HANDOFF",
+        record.canonical_payload,
+    )
 
 
 def session_events(connection, session_id, generation, limit):
@@ -335,7 +348,7 @@ class ContextIndex:
                 {"path": path, "sha256": sha, "owner": ref.to_json(), "status": "VERIFIED"},
             )
 
-    def _continuity(self, item):
+    def _continuity(self, item, required_handoff):
         lifecycle = LifecycleRepository.project_summary(self.connection, item.project_id)
         if lifecycle is not None:
             yield _source(
@@ -368,24 +381,18 @@ class ContextIndex:
                 "PRIOR_SESSION",
                 capture,
             )
+        if required_handoff is not None:
+            yield required_handoff
+            return
         handoffs = self.repository.list_handoffs(
             self.connection, work_item_id=item.work_item_id, session_id=None, limit=1, offset=0
         )
         if handoffs:
             from .handoff import verify_handoff
 
-            record = handoffs[0]
-            verify_handoff(record)
-            yield _source(
-                "SESSION_HANDOFF",
-                "DERIVED",
-                record.handoff_id,
-                record.digest,
-                "HANDOFF",
-                record.canonical_payload,
-            )
+            yield handoff_source(verify_handoff(handoffs[0]))
 
-    def select(self, work_item_id):
+    def select(self, work_item_id, *, required_handoff=None):
         item = self.work.item(self.work.row(work_item_id))
         if sanitize_text(item.project_id) != item.project_id:
             raise ContextError("The project identity is not admissible as Context.")
@@ -393,7 +400,7 @@ class ContextIndex:
             self._work_source(item, "WORK_ITEM"),
             *self._related_work(item),
             *self._contracts(item),
-            *self._continuity(item),
+            *self._continuity(item, required_handoff),
         )
         identity = (item.project_id, item.work_item_id)
         return identity, sorted((row for row in candidates if row is not None), key=source_key)

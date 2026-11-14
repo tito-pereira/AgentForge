@@ -1164,6 +1164,101 @@
           "params"
         ]
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "switch.status"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "source_session_id": {
+                "type": "string",
+                "pattern": "^session-[0-9a-f]{32}$"
+              },
+              "target_provider": {
+                "enum": [
+                  "codex",
+                  "claude"
+                ]
+              },
+              "source_generation": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "root",
+              "source_session_id",
+              "target_provider"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "switch.execute"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "source_session_id": {
+                "type": "string",
+                "pattern": "^session-[0-9a-f]{32}$"
+              },
+              "target_provider": {
+                "enum": [
+                  "codex",
+                  "claude"
+                ]
+              },
+              "source_generation": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "root",
+              "source_session_id",
+              "target_provider"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params",
+          "id"
+        ]
+      }
     }
   ]
 }

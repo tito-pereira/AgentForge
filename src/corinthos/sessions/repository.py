@@ -568,6 +568,23 @@ class SessionRepository:
                 raise SessionError("The Agent Session was not found.")
             return _session(self._row(connection, session_id))
 
+    @staticmethod
+    def switch_target(connection, projection):
+        rows = connection.execute(
+            """SELECT * FROM agent_sessions
+               WHERE project_id = ? AND work_item_id = ? AND provider = ?
+                 AND context_projection_id = ? LIMIT 2""",
+            (
+                projection.project_id,
+                projection.work_item_id,
+                projection.target_provider,
+                projection.projection_id,
+            ),
+        ).fetchall()
+        if len(rows) > 1:
+            raise ConflictError("The switch projection has conflicting target sessions.")
+        return _session(rows[0]) if rows else None
+
     def list(self, *, limit=10, offset=0) -> list[Session]:
         _page(limit, offset)
         with self._read() as connection:

@@ -33,12 +33,12 @@ function Invoke-DesktopFixture([string] $Stage) {
     if ($Stage -eq 'sessions') {
         $providerTree = @(Get-CimInstance Win32_Process -Filter "Name = 'codex.exe'" |
             Where-Object { $_.ExecutablePath -eq $explicitExe })
-        Assert-Spike ($providerTree.Count -eq 2) 'Cancel and timeout should reap the two previous trees and leave one live provider with one child.'
+        Assert-Spike ($providerTree.Count -eq 2) 'Cancel, timeout and switch should reap the earlier trees and leave one live provider with one child.'
     }
     Assert-Spike ($desktopProcess.CloseMainWindow()) 'Could not request desktop shutdown.'
     Assert-Spike ($desktopProcess.WaitForExit(22000) -and $desktopProcess.ExitCode -eq 0) 'Desktop shutdown did not complete.'
-    $remaining = Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'codex.exe'" |
-        Where-Object { $_.ExecutablePath -eq $python -or $_.ExecutablePath -eq $explicitExe -or $_.ExecutablePath -eq $autoExe }
+    $remaining = Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'codex.exe' OR Name = 'claude.exe'" |
+        Where-Object { $_.ExecutablePath -eq $python -or $_.ExecutablePath -eq $explicitExe -or $_.ExecutablePath -eq $autoExe -or $_.ExecutablePath -eq $claudeExe }
     Assert-Spike (!$remaining) 'Closing the desktop left an owned sidecar or fixture provider process running.'
     $desktopProcess.Dispose()
     $script:desktopProcess = $null
@@ -183,6 +183,72 @@ internal static class Provider {
     }
 }
 '@)
+    $claudeSource = Join-Path $root 'claude.cs'
+    [IO.File]::WriteAllText($claudeSource, @'
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Web.Script.Serialization;
+
+internal static class ClaudeFixture {
+    private static int Main(string[] args) {
+        string log = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "claude.log");
+        if (args.Length == 1 && args[0] == "--version") {
+            File.AppendAllText(log, "--version" + Environment.NewLine);
+            Console.WriteLine("claude 1.2.3");
+            return 0;
+        }
+        if (args.Length == 1 && args[0] == "--help") {
+            File.AppendAllText(log, "--help" + Environment.NewLine);
+            Console.WriteLine("--print --output-format stream-json --verbose --resume --tools --disallowedTools");
+            return 0;
+        }
+        if (Array.IndexOf(args, "--print") < 0 || Array.IndexOf(args, "stream-json") < 0 ||
+            Array.IndexOf(args, "--resume") >= 0 ||
+            Array.IndexOf(args, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa") >= 0) return 2;
+        string input = Console.In.ReadToEnd();
+        if (input.Contains("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa") || input.Contains("v8-fixture-hidden-value")) return 3;
+        var json = new JavaScriptSerializer();
+        var outer = json.Deserialize<Dictionary<string, object>>(input.Substring(input.IndexOf('\n') + 1));
+        var context = (Dictionary<string, object>)outer["context"];
+        var objective = (string)context["objective"];
+        var envelope = json.Deserialize<Dictionary<string, object>>(objective.Substring(objective.IndexOf("\n{") + 1));
+        var projection = (Dictionary<string, object>)envelope["projection"];
+        string work = (string)projection["work_item_id"];
+        string handoff = (string)projection["required_handoff_id"];
+        if ((string)projection["target_provider"] != "claude" || !work.StartsWith("work-") ||
+            !handoff.StartsWith("handoff-")) return 4;
+        bool sourceObserved = false;
+        foreach (Dictionary<string, object> source in (System.Collections.IEnumerable)projection["sources"]) {
+            if ((string)source["identity"] != handoff || (string)source["kind"] != "SESSION_HANDOFF" ||
+                (string)source["authority"] != "DERIVED") continue;
+            var capture = (Dictionary<string, object>)source["capture"];
+            var sourceSession = (Dictionary<string, object>)capture["source_session"];
+            if ((string)sourceSession["work_item_id"] != work || (string)sourceSession["provider"] != "codex" ||
+                (string)sourceSession["state"] != "CANCELLED") return 5;
+            foreach (Dictionary<string, object> entry in (System.Collections.IEnumerable)capture["observations"]) {
+                var payload = (Dictionary<string, object>)entry["payload"];
+                if ((string)entry["kind"] == "OUTPUT" && payload.ContainsKey("text") &&
+                    (string)payload["text"] == "Deterministic session output") sourceObserved = true;
+            }
+        }
+        if (!sourceObserved) return 6;
+        File.AppendAllText(log, "launch" + Environment.NewLine);
+        const string nativeId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+        Console.WriteLine(json.Serialize(new { type = "system", subtype = "init", session_id = nativeId }));
+        Console.WriteLine(json.Serialize(new {
+            type = "result", subtype = "success", is_error = false, session_id = nativeId,
+            result = "Verified switch continuity from the source Handoff",
+            usage = new { input_tokens = 12, output_tokens = 2 },
+        }));
+        return 0;
+    }
+}
+'@)
+    $claudeExe = Join-Path $configured 'claude.exe'
+    & (Get-LauncherCompiler) /nologo /target:exe /platform:x64 /reference:System.Web.Extensions.dll "/out:$claudeExe" $claudeSource
+    if ($LASTEXITCODE -ne 0) { throw 'Could not compile the independent Claude fixture.' }
+    $claudeLog = Join-Path $configured 'claude.log'
     $autoExe = Join-Path $providers 'codex.exe'
     $explicitExe = Join-Path $configured 'codex.exe'
     & (Get-LauncherCompiler) /nologo /target:exe /platform:x64 "/out:$autoExe" $sentinelSource
@@ -203,22 +269,26 @@ internal static class Provider {
 
     $fixture = @{
         version = 1
-        providers = @{ codex = @{ executable = $explicitExe; observed = $null } }
+        providers = @{
+            codex = @{ executable = $explicitExe; observed = $null }
+            claude = @{ executable = $claudeExe; observed = $null }
+        }
     } | ConvertTo-Json -Depth 4
     [IO.File]::WriteAllText($registry, $fixture)
     $registryHash = (Get-FileHash -LiteralPath $registry).Hash
     $env:CORINTHOS_SIDECAR_PYTHON = $null
     Invoke-DesktopFixture 'passive'
-    Assert-Spike (![IO.File]::Exists($autoLog) -and ![IO.File]::Exists($configuredLog)) 'Context audit, projection verification or passive Agents rendering launched a provider.'
+    Assert-Spike (![IO.File]::Exists($autoLog) -and ![IO.File]::Exists($configuredLog) -and ![IO.File]::Exists($claudeLog)) 'Passive Context, Agents or switch status launched a provider.'
     Assert-Spike ((Get-FileHash -LiteralPath $registry).Hash -eq $registryHash) 'Context or passive Agents rendering rewrote provider state.'
     Write-Host 'Desktop WebView displayed the migrated v9 project, verified an immutable projection and its redacted source provenance, and inspected legacy Agents without native probes.'
 
     Invoke-DesktopFixture 'sessions'
     Assert-Spike (![IO.File]::Exists($autoLog) -and [IO.File]::Exists($configuredLog)) 'Explicit sessions did not select only the configured provider.'
-    Assert-Spike (@([IO.File]::ReadAllLines($configuredLog) | Where-Object { $_ -eq 'launch' }).Count -eq 3) 'Expected exactly three supervised native invocations.'
+    Assert-Spike (@([IO.File]::ReadAllLines($configuredLog) | Where-Object { $_ -eq 'launch' }).Count -eq 4) 'Expected four supervised Codex invocations.'
     Assert-Spike ((Get-FileHash -LiteralPath $registry).Hash -eq $registryHash) 'Starting sessions rewrote the configured provider registry.'
+    Assert-Spike (@([IO.File]::ReadAllLines($claudeLog) | Where-Object { $_ -eq 'launch' }).Count -eq 1) 'Switch replay should reuse the single Claude session.'
     Assert-Spike ((Get-FileHash -LiteralPath $profile).Hash -eq $profileHash) 'Desktop changed the project bootstrap.'
-    Write-Host 'Actual WebView bound three deterministic sessions to projections, created an immutable handoff, tested cancellation and timeout and closed with an active provider. The sidecar and all fixture provider trees were reaped.'
+    Write-Host 'Actual WebView switched Codex to an independent Claude fixture after source cleanup, verified continuity and replay, and closed with an active provider. The sidecar and all fixture provider trees were reaped.'
 
 
     $savedRegistry = Get-Content -Raw -LiteralPath $recent | ConvertFrom-Json
@@ -227,7 +297,7 @@ internal static class Provider {
     Assert-Spike ($backups.Count -eq 1) 'Explicit project open did not preserve exactly one v8 backup.'
     $checkMigrationPath = Join-Path $work 'check_migration.py'
     $checkMigration = @'
-import sqlite3, sys
+import json, sqlite3, sys
 from contextlib import closing
 from pathlib import Path
 
@@ -253,23 +323,55 @@ def inspect(database):
             assert db.execute("SELECT context_projection_id FROM agent_sessions WHERE session_id = ?",
                               (legacy_session[0],)).fetchone() == (None,)
             states = db.execute(
-                "SELECT a.session_id, a.state, p.projection_digest FROM agent_sessions a "
+                "SELECT a.session_id, a.state, p.projection_digest, a.provider, "
+                "a.work_item_id, a.native_session_id, p.projection_id, p.canonical_payload "
+                "FROM agent_sessions a "
                 "JOIN context_projections p ON p.projection_id = a.context_projection_id "
                 "ORDER BY a.created_at, a.session_id"
             ).fetchall()
-            assert [state for _, state, _ in states] == ["CANCELLED", "TIMED_OUT", "INTERRUPTED"], states
-            for session_id, state, digest in states:
+            assert [(row[1], row[3]) for row in states] == [
+                ("CANCELLED", "codex"), ("TIMED_OUT", "codex"), ("CANCELLED", "codex"),
+                ("SUCCEEDED", "claude"), ("INTERRUPTED", "codex"),
+            ], states
+            source, target = states[2:4]
+            assert source[0] != target[0]
+            [(work_item_id,)] = db.execute("SELECT work_item_id FROM work_items").fetchall()
+            assert all(row[4] == work_item_id for row in states)
+            assert source[5] == "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+            assert target[5] == "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+            for row in states:
+                session_id, state, digest = row[:3]
                 assert len(digest) == 64
-                kinds = db.execute(
-                    "SELECT kind FROM agent_session_events WHERE session_id = ?", (session_id,)
+                events = db.execute(
+                    "SELECT kind, payload FROM agent_session_events WHERE session_id = ?",
+                    (session_id,),
                 ).fetchall()
-                assert ("OUTPUT",) in kinds and (state,) in kinds, (state, kinds)
-            [handoff] = db.execute("SELECT source_session_id, event_cutoff FROM session_handoffs")
-            assert handoff[0] == states[0][0]
-            cutoff = db.execute(
-                "SELECT MAX(sequence) FROM agent_session_events WHERE session_id = ?", (handoff[0],)
-            ).fetchone()[0]
-            assert handoff[1] == cutoff
+                assert any(kind == "OUTPUT" for kind, _ in events)
+                terminal_kind = "SESSION_FINISHED" if state == "SUCCEEDED" else state
+                assert any(kind == terminal_kind for kind, _ in events), (state, events)
+                if session_id == target[0]:
+                    assert any("Verified switch continuity from the source Handoff" in payload
+                               for kind, payload in events if kind == "OUTPUT")
+            handoffs = db.execute(
+                "SELECT handoff_id, source_session_id, event_cutoff FROM session_handoffs"
+            ).fetchall()
+            assert {row[1] for row in handoffs} == {states[0][0], source[0]} and len(handoffs) == 2
+            for _, session_id, event_cutoff in handoffs:
+                cutoff = db.execute(
+                    "SELECT MAX(sequence) FROM agent_session_events WHERE session_id = ?", (session_id,)
+                ).fetchone()[0]
+                assert event_cutoff == cutoff
+            [source_handoff] = [row[0] for row in handoffs if row[1] == source[0]]
+            target_projection = json.loads(target[7])
+            assert target_projection["required_handoff_id"] == source_handoff
+            assert target_projection["target_provider"] == "claude"
+            assert "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" not in target[7]
+            assert db.execute(
+                "SELECT kind, authority FROM context_projection_sources "
+                "WHERE projection_id = ? AND identity = ?",
+                (target[6], source_handoff),
+            ).fetchall() == [("SESSION_HANDOFF", "DERIVED")]
+
             for table in ("context_projections", "context_projection_sources", "session_handoffs"):
                 captures = db.execute(f"SELECT * FROM {table}").fetchall()
                 assert captures and "v8-fixture-hidden-value" not in repr(captures)

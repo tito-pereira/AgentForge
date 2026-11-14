@@ -61,14 +61,18 @@ class HandoffService:
 
         self.repository = ContextRepository(root)
 
-    def create(self, session_id):
+    def create(self, session_id, *, generation=None):
         identifier(session_id, "Agent Session")
+        if generation is not None and (type(generation) is not int or generation < 1):
+            raise ContextError("Use a valid Agent Session generation.")
         with self.repository.write() as connection:
             session = connection.execute(
                 "SELECT * FROM agent_sessions WHERE session_id = ?", (session_id,)
             ).fetchone()
             if session is None:
                 raise ContextError("The Agent Session was not found.")
+            if generation is not None and generation != session["run_generation"]:
+                raise ContextError("The Agent Session generation changed before handoff.")
             if session["state"] not in TERMINAL_STATES or session["cleanup_unconfirmed"]:
                 raise ContextError("A Session Handoff requires a stable terminal Agent Session.")
             for name in ("session_id", "work_item_id", "project_id", "provider"):
@@ -110,6 +114,37 @@ class HandoffService:
                 datetime.now(UTC).isoformat(),
             )
             return verify_handoff(self.repository.save_handoff(connection, record))
+
+    def for_source(self, connection, source):
+        """Read the handoff for the source's current stable generation and terminal event."""
+        if source.state not in TERMINAL_STATES or source.cleanup_unconfirmed:
+            raise ContextError("A Session Handoff requires a stable terminal Agent Session.")
+        events = session_events(connection, source.session_id, source.run_generation, 1)
+        latest = connection.execute(
+            "SELECT max(sequence) FROM agent_session_events WHERE session_id = ?",
+            (source.session_id,),
+        ).fetchone()[0]
+        if (
+            not events
+            or events[0]["sequence"] != latest
+            or events[0]["kind"] != _TERMINAL_EVENT[source.state]
+        ):
+            raise ContextError("A Session Handoff requires a recorded terminal event.")
+        record = self.repository.handoff_for_event(
+            connection, source.session_id, source.run_generation, latest
+        )
+        if record is None:
+            return None
+        verify_handoff(record)
+        if (
+            record.project_id != source.project_id
+            or record.work_item_id != source.work_item_id
+            or record.provider != source.provider
+            or record.terminal_state != source.state
+            or record.canonical_payload["observations"][-1] != redact(events[0])[0]
+        ):
+            raise ContextError("Stored Session Handoff does not match its source event.")
+        return record
 
     def get(self, handoff_id):
         identifier(handoff_id, "Session Handoff")

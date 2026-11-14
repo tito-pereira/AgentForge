@@ -140,3 +140,7 @@ code {
 .context-sources { padding-left: 1.4rem; }
 .context-sources li + li { margin-top: 0.5rem; }
 .context-sources .facts, .session-projection { margin-top: 0.35rem; }
+
+.provider-switch { margin-top: 0.8rem; padding-top: 0.7rem; border-top: 1px solid #d4ded7; }
+.provider-switch h5 { margin: 0 0 0.35rem; font-size: 1rem; }
+.provider-switch .field-row { align-items: end; }

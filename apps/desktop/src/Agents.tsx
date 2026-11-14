@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { bridge, type AgentSession, type ContextProjection, type ProviderStatus, type SessionEvent, type WorkNode } from "./bridge";
 
+import { ProviderSwitch } from "./ProviderSwitch";
+
 const activeStates = ["STARTING", "RUNNING", "CANCELLING"];
 const defaultTimeout = "120";
 const eventLimit = 10;
@@ -255,6 +257,14 @@ export function Agents({ root, methods, providers }: {
           {detail.cleanup_unconfirmed && <p>Process cleanup could not be confirmed.</p>}
           {detail.state === "INTERRUPTED" && !detail.can_recover && (
             <p>Native recovery is unavailable for this session.</p>
+          )}
+          {methods.includes("switch.status") && methods.includes("switch.execute") && (
+            <ProviderSwitch key={detail.session_id + ":" + detail.run_generation}
+              root={root} source={detail} providers={providers} disabled={busy}
+              onSession={(sessionId) => void run(async () => {
+                await select(await bridge.sessionGet(root, sessionId));
+                await loadSessions(0);
+              }, "Could not open the target session.")} />
           )}
           {canReadEvents && (
             <>

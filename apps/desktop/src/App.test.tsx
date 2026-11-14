@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import type { AgentSession, BackendSnapshot, ContextProjection, ProjectEntry, ProjectSummary, SessionHandoff, WorkItem } from "./bridge";
+import type { AgentSession, BackendSnapshot, ContextProjection, ProjectEntry, ProjectSummary, SessionHandoff, SwitchView, WorkItem } from "./bridge";
 
 const { invoke, listen } = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
@@ -212,13 +212,18 @@ describe("desktop Agents", () => {
     read_only: false, can_cancel: true, can_recover: false, cleanup_unconfirmed: false,
   };
 
-  function setup(initial: AgentSession[]) {
+  function setup(initial: AgentSession[], switchRequest?: (method: string) => SwitchView) {
     const rows = initial.slice();
     invoke.mockImplementation(async (command, payload) => {
       if (command === "backend_snapshot") {
-        return { ...ready, handshake: { ...ready.handshake, methods: [...methods, ...sessionMethods] } };
+        if (!switchRequest) return { ...ready, handshake: { ...ready.handshake, methods: [...methods, ...sessionMethods] } };
+        const [codex] = ready.providers.providers;
+        return { ...ready, handshake: { ...ready.handshake, methods: [...methods, ...sessionMethods, "switch.status", "switch.execute"] },
+          providers: { providers: [codex, { ...codex, provider: "claude" }] } };
       }
       switch (payload.method) {
+        case "switch.status":
+        case "switch.execute": return switchRequest?.(payload.method);
         case "projects.list": return { projects: [legacy], next_offset: null };
         case "project.open": return { ...summary, schema_version: 8 };
         case "work.tree": return { nodes: [{ ...item, depth: 0 }], next_offset: null };
@@ -310,6 +315,84 @@ describe("desktop Agents", () => {
     expect(host.querySelector(".session-detail")?.textContent).toContain("StateSTARTING");
   });
 
+  function switchView(changes: Partial<SwitchView> = {}): SwitchView {
+    return {
+      switch_key: "a".repeat(64), project_id: "project", work_item_id: item.work_item_id,
+      source_session_id: session.session_id, source_provider: "codex", source_generation: 1,
+      source_state: "RUNNING", cleanup_unconfirmed: false, target_provider: "claude",
+      stage: "SOURCE_ACTIVE", handoff_id: null, handoff_digest: null, projection_id: null,
+      projection_digest: null, target_session_id: null, target_state: null, blocker: null,
+      ...changes,
+    };
+  }
+
+  it("keeps target selection passive and reports an unavailable target without stopping the source", async () => {
+    setup([session], (method) => method === "switch.execute"
+      ? switchView({ stage: "BLOCKED", blocker: "TARGET_UNAVAILABLE" })
+      : switchView());
+    await render();
+    await click("Open Project");
+    await click("Agents");
+    await click(session.session_id);
+    const select = host.querySelector<HTMLSelectElement>("#switch-target-provider")!;
+    expect(Array.from(select.options, (option) => option.value)).toEqual(["", "claude"]);
+    expect(select.value).toBe("");
+    expect(requested()).not.toContain("switch.status");
+    await field("#switch-target-provider", "claude");
+    expect(requested().filter((method) => method?.startsWith("switch."))).toEqual(["switch.status"]);
+    await click("Switch provider");
+    expect(invoke.mock.calls).toContainEqual(["workspace_request", { method: "switch.execute", params: {
+      root: legacy.root, source_session_id: session.session_id, target_provider: "claude", source_generation: 1,
+    } }]);
+    expect(host.querySelector(".provider-switch")?.textContent).toContain("The selected target provider is unavailable.");
+    expect(host.querySelector(".provider-switch")?.textContent).toContain("Source stateRUNNING");
+    expect(requested()).not.toContain("session.cancel");
+    expect(requested().some((method) => method?.startsWith("providers."))).toBe(false);
+  });
+
+  it("shows backend switch stages and exact continuity before replaying the same target", async () => {
+    vi.useFakeTimers();
+    try {
+      let view = switchView();
+      let executions = 0;
+      setup([session], (method) => {
+        if (method !== "switch.execute") return view;
+        executions += 1;
+        if (executions === 1) view = switchView({ stage: "STOPPING_SOURCE", source_state: "CANCELLING" });
+        if (executions === 2) view = { ...view, stage: "PROJECTION_READY", projection_id: "projection-b",
+          projection_digest: "b".repeat(64) };
+        if (executions === 3) view = { ...view, stage: "TARGET_SESSION_ACTIVE",
+          target_session_id: "session-2", target_state: "RUNNING" };
+        return view;
+      });
+      await render();
+      await click("Open Project");
+      await click("Agents");
+      await click(session.session_id);
+      await field("#switch-target-provider", "claude");
+      await click("Switch provider");
+      const panel = host.querySelector(".provider-switch")!;
+      expect(panel.querySelector(".switch-stage")?.textContent).toBe("STOPPING_SOURCE");
+      expect(panel.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+      view = switchView({ stage: "HANDOFF_READY", source_state: "CANCELLED",
+        handoff_id: "handoff-a", handoff_digest: "a".repeat(64) });
+      await act(async () => vi.advanceTimersByTimeAsync(1000));
+      expect(panel.querySelector(".switch-stage")?.textContent).toBe("HANDOFF_READY");
+      expect(panel.textContent).toContain("handoff-a");
+      expect(executions).toBe(1);
+      await click("Continue switch");
+      expect(panel.querySelector(".switch-stage")?.textContent).toBe("PROJECTION_READY");
+      expect(panel.textContent).toContain("projection-b");
+      await click("Continue switch");
+      expect(panel.querySelector(".switch-stage")?.textContent).toBe("TARGET_SESSION_ACTIVE");
+      expect(panel.textContent).toContain("session-2");
+      await click("Replay switch");
+      expect(panel.textContent).toContain("session-2");
+      expect(executions).toBe(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("shows bounded failures and unmounts on disconnect", async () => {
     setup([]);
     await render();

@@ -115,6 +115,10 @@ jobs:
         run: |
           ${{ matrix.python }} -m corinthos context --help
           ${{ matrix.python }} -m corinthos handoff --help
+      - name: Verify Phase 5 CLI commands
+        run: |
+          ${{ matrix.python }} -m corinthos switch start --help
+          ${{ matrix.python }} -m corinthos switch status --help
       - name: Verify Workflow commands
         run: |
           ${{ matrix.python }} -m corinthos workflow --help

@@ -20,6 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     from corinthos.application.cli import configure_workspace
     from corinthos.application.context_cli import configure as configure_context
     from corinthos.application.session_cli import configure as configure_sessions
+    from corinthos.application.switch_cli import configure as configure_switch
     from corinthos.bootstrap import add_cli as configure_bootstrap
     from corinthos.lifecycle.playtest_cli import add_cli as configure_playtest
     from corinthos.lifecycle.version_cli import add_cli as configure_version
@@ -32,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = configure_parser(parser)
     configure_workspace(commands)
     configure_sessions(commands)
+    configure_switch(commands)
     configure_context(commands)
     configure_workflow_parser(commands)
     configure_validation_parser(commands)

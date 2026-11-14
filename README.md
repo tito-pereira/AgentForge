@@ -456,6 +456,7 @@ release. Actual results and outstanding limits remain tied to their evidence.
 - [v0.1 Project Registry, Work Items, SQLite v7 and RPC v2](docs/v0.1/phase-2-projects.md)
 - [v0.1 Agent Sessions and SQLite v8](docs/v0.1/phase-3-sessions.md)
 - [v0.1 Deterministic Context Engine and SQLite v9](docs/v0.1/phase-4-context.md)
+- [v0.1 Provider Switch and crash-safe replay](docs/v0.1/phase-5-provider-switch.md)
 - [Architecture and six Engines](docs/architecture.md)
 - [Eight contract types](docs/contracts.md)
 - [Project Manager tutorial, approval and service API](docs/project-manager.md)

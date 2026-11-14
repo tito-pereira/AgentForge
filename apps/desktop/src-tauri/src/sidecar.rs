@@ -19,6 +19,7 @@ const MAX_FRAME_BYTES: usize = 65_536;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(8);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const PROJECT_OPEN_TIMEOUT: Duration = Duration::from_secs(15);
+const SWITCH_EXECUTE_TIMEOUT: Duration = Duration::from_secs(20);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 const SESSION_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(12);
 const PROTOCOL_VERSION: u32 = 2;
@@ -210,10 +211,10 @@ impl Sidecar {
         let id = self
             .send(method, params)
             .or_else(|error| self.fail(error))?;
-        let timeout = if method == "project.open" {
-            PROJECT_OPEN_TIMEOUT
-        } else {
-            REQUEST_TIMEOUT
+        let timeout = match method {
+            "project.open" => PROJECT_OPEN_TIMEOUT,
+            "switch.execute" => SWITCH_EXECUTE_TIMEOUT,
+            _ => REQUEST_TIMEOUT,
         };
         self.receive_response(id, Instant::now() + timeout)
     }

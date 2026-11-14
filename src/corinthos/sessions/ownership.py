@@ -10,6 +10,10 @@ from corinthos.contracts.artifacts import private_directory
 from corinthos.user_state import _checked_file, _ordinary
 
 
+class ProjectOwnerBusy(ConflictError):
+    """A supervisor or its process guardian still owns this project."""
+
+
 @contextmanager
 def project_owner(root):
     path = private_directory(root) / "session-owner.lock"
@@ -32,7 +36,7 @@ def project_owner(root):
 
                 fcntl.flock(file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            raise ConflictError("Another supervisor owns this project.") from None
+            raise ProjectOwnerBusy("Another supervisor owns this project.") from None
         # Close releases ownership only when the native guardian has closed
         # its inherited POSIX descriptor too.
         yield None if os.name == "nt" else file.fileno()

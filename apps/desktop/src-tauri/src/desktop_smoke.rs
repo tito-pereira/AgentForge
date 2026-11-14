@@ -67,6 +67,9 @@ pub fn with_probe<'a, R: Runtime, M: tauri::Manager<R>>(
                 "Corinthos desktop smoke: fail [start]" => "fail [start]\n",
                 "Corinthos desktop smoke: fail [cancel]" => "fail [cancel]\n",
                 "Corinthos desktop smoke: fail [timeout]" => "fail [timeout]\n",
+                "Corinthos desktop smoke: fail [switch]" => "fail [switch]\n",
+                "Corinthos desktop smoke: fail [replay]" => "fail [replay]\n",
+                "Corinthos desktop smoke: fail [continuity]" => "fail [continuity]\n",
                 "Corinthos desktop smoke: fail [unexpected]" => "fail [unexpected]\n",
                 _ => return,
             };
