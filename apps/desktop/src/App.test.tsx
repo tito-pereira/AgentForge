@@ -388,6 +388,7 @@ describe("desktop Agents", () => {
       expect(panel.textContent).toContain("session-2");
       await click("Replay switch");
       expect(panel.textContent).toContain("session-2");
+      expect(panel.textContent).toContain("Existing target session confirmed.");
       expect(executions).toBe(4);
     } finally {
       vi.useRealTimers();

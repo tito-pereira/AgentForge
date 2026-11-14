@@ -22,6 +22,7 @@ export function ProviderSwitch({ root, source, providers, disabled, onSession }:
   const [view, setView] = useState<SwitchView | null>(null);
   const [actionBlocker, setActionBlocker] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [replayConfirmed, setReplayConfirmed] = useState(false);
   const [error, setError] = useState("");
   const [inspection, setInspection] = useState(0);
   const providerOptions = providers.filter((row) => row.supported && row.provider !== source.provider);
@@ -57,11 +58,13 @@ export function ProviderSwitch({ root, source, providers, disabled, onSession }:
     if (!target || pending || disabled || view?.stage === "STOPPING_SOURCE") return;
     setError("");
     setActionBlocker(null);
+    setReplayConfirmed(false);
     setPending(true);
     try {
       const result = await bridge.switchExecute(root, sourceId, target, generation);
       setView(result);
       setActionBlocker(result.blocker);
+      setReplayConfirmed(Boolean(view?.target_session_id && result.target_session_id === view.target_session_id));
     } catch {
       setError("Could not confirm the switch. Check status before retrying.");
     } finally {
@@ -92,7 +95,7 @@ export function ProviderSwitch({ root, source, providers, disabled, onSession }:
           <div>
             <label htmlFor="switch-target-provider">Target provider</label>
             <select id="switch-target-provider" required value={target} disabled={disabled || pending}
-              onChange={(event) => { setTarget(event.target.value); setView(null); setActionBlocker(null); setError(""); }}>
+              onChange={(event) => { setTarget(event.target.value); setView(null); setActionBlocker(null); setError(""); setReplayConfirmed(false); }}>
               <option value="">Select target provider</option>
               {providerOptions.map(({ provider }) => <option key={provider}>{provider}</option>)}
             </select>
@@ -104,11 +107,13 @@ export function ProviderSwitch({ root, source, providers, disabled, onSession }:
             setError("");
             setView(null);
             setActionBlocker(null);
+            setReplayConfirmed(false);
             setInspection((value) => value + 1);
           }}>Check switch status</button>
         </form>
       )}
       {pending && <p role="status">Requesting provider switch…</p>}
+      {replayConfirmed && <p role="status" className="switch-replay-confirmed">Existing target session confirmed.</p>}
       {error && <p role="alert">{error}</p>}
       {blocker && <p role="alert">{blockers[blocker] ?? "The switch is blocked."}</p>}
       {view && (

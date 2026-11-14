@@ -166,7 +166,8 @@
       startButton().form.requestSubmit(startButton());
       return waitFor(() => {
         const id = text(details()?.querySelector("h4"));
-        return id && id !== previous && state() === "RUNNING" && event("OUTPUT") &&
+        return id && id !== previous && state() === "RUNNING" &&
+          text(details()?.querySelector(".session-events"))?.includes("Deterministic session output") &&
           Boolean(valueFor(details(), "Context projection")) &&
           sha256(valueFor(details(), "Context digest"));
       });
@@ -241,6 +242,7 @@
     const replay = switchButton("Replay switch");
     replay.click();
     if (!(await waitFor(() => targetSession() === targetId &&
+          text(switchPanel()?.querySelector(".switch-replay-confirmed")) === "Existing target session confirmed." &&
           switchButton("Open target session")?.matches(":enabled")))) return report("fail [replay]");
     switchButton("Open target session").click();
     if (!(await waitFor(() => text(details()?.querySelector("h4")) === targetId &&
