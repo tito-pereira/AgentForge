@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 import { useEffect, useState, type FormEvent } from "react";
-import { bridge, type WorkItem, type WorkNode } from "./bridge";
+import { AdaptiveWorkflow } from "./AdaptiveWorkflow";
+import { bridge, workScopes, type ProviderStatus, type WorkItem, type WorkNode } from "./bridge";
 
-const scopes = ["TASK", "CHANGE", "PROJECT", "CRITICAL"];
-
-export function WorkItems({ root, methods, onChange }: {
+export function WorkItems({ root, methods, providers, onChange }: {
   root: string;
   methods: string[];
+  providers: ProviderStatus[];
   onChange: () => Promise<void>;
 }) {
   const [nodes, setNodes] = useState<WorkNode[]>([]);
@@ -119,6 +119,7 @@ export function WorkItems({ root, methods, onChange }: {
   }
 
   const choices = item?.allowed_transitions ?? [];
+  const canViewFlow = methods.includes("flow.status");
 
   return (
     <div className="work-items">
@@ -149,7 +150,7 @@ export function WorkItems({ root, methods, onChange }: {
           <p>{item.scope_level} · {item.status}</p>
           {canTransition && choices.length > 0 && (
             <form onSubmit={(event) => void transition(event)}>
-              <label htmlFor="work-status">Change status</label>
+              <label htmlFor="work-status">{canViewFlow ? "Change operational status" : "Change status"}</label>
               <div className="field-row">
                 <select id="work-status" value={status} onChange={(event) => setStatus(event.target.value)} required disabled={busy}>
                   <option value="">Choose a status</option>
@@ -159,6 +160,12 @@ export function WorkItems({ root, methods, onChange }: {
               </div>
             </form>
           )}
+          {canViewFlow && <AdaptiveWorkflow key={item.work_item_id}
+            root={root} item={item} methods={methods} providers={providers} disabled={busy} run={run} onChanged={async () => {
+              setItem(await bridge.workGet(root, item.work_item_id));
+              await loadTree(offset);
+              await onChange();
+            }} />}
         </div>
       )}
       {canCreate && (
@@ -169,7 +176,7 @@ export function WorkItems({ root, methods, onChange }: {
             <input id="work-objective" value={objective} onChange={(event) => setObjective(event.target.value)} maxLength={1200} required />
             <label htmlFor="work-scope">Scope</label>
             <select id="work-scope" value={scope} onChange={(event) => setScope(event.target.value)} required>
-              {scopes.map((value) => <option key={value}>{value}</option>)}
+              {workScopes.map((value) => <option key={value}>{value}</option>)}
             </select>
             <label htmlFor="work-criteria">Acceptance criteria, one per line</label>
             <textarea id="work-criteria" value={criteria} onChange={(event) => setCriteria(event.target.value)} maxLength={4807} required />

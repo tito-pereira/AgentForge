@@ -2,7 +2,6 @@
 """Durable execution claims, fenced leases and retained observations."""
 
 import json
-import os
 from datetime import UTC, datetime
 from hashlib import sha256
 from math import isfinite
@@ -19,6 +18,8 @@ from corinthos.contracts import (
 )
 from corinthos.contracts.model import ID_PATTERN, canonical_json
 from corinthos.contracts.schema import validate_schema
+from corinthos.work.model import ScopeLevel
+from corinthos.work.repository import WorkRepository
 
 from .reconciliation import RevisionReconciler
 from .verification import (
@@ -29,6 +30,13 @@ from .verification import (
     _digest_file,
     safe_workspace_path,
     workspace_snapshot,
+)
+from .work_binding import (
+    bind_configuration,
+    remove_predecessor_critical_audits,
+    require_current_binding,
+    require_unique_binding,
+    workspace_key,
 )
 
 _MAX_JSON = 1_048_576
@@ -143,8 +151,7 @@ class ExecutionRepository:
             resolved = original.resolve(strict=True)
             if original != resolved or not resolved.is_dir() or not resolved.is_relative_to(root):
                 raise ValueError
-            key = str(resolved).casefold() if os.name == "nt" else str(resolved)
-            return str(resolved), key
+            return str(resolved), workspace_key(resolved)
         except (ValueError, TypeError, OSError, RuntimeError):
             raise StoreError(
                 "Use an existing authorized workspace without path redirection."
@@ -191,7 +198,7 @@ class ExecutionRepository:
             checkpoint = self._checkpoint(connection, execution_id, checkpoint_id)
             self._eligible(connection, execution, checkpoint)
 
-    def _bindings(self, workflow, bindings):
+    def _bindings(self, connection, workflow, bindings, work_item_id=None):
         serialized = _json(bindings)
         result = json.loads(serialized)
         checkpoints = {item["checkpoint_id"] for item in workflow["payload"]["checkpoints"]}
@@ -199,6 +206,9 @@ class ExecutionRepository:
             raise StoreError("Execution bindings must cover exactly the Workflow checkpoints.")
         if any(type(value) is not dict for value in result["checkpoints"].values()):
             raise StoreError("Each checkpoint requires a structured execution binding.")
+        if work_item_id is not None:
+            bind_configuration(connection, workflow, result, work_item_id)
+        require_current_binding(connection, workflow, result)
         workspace, key = self._workspace(
             result.get("workspace"), self.store.database_path.parent.parent
         )
@@ -328,12 +338,14 @@ class ExecutionRepository:
         )
         return execution_id
 
-    def register(self, workflow_ref, bindings, *, actor_id):
+    def register(self, workflow_ref, bindings, *, actor_id, work_item_id=None):
         """Register immutable execution configuration or return its current exact match."""
         _identifier(actor_id)
         with self.store._transaction() as connection:
             workflow = self._fresh(connection, workflow_ref)
-            workspace, serialized, digest = self._bindings(workflow, bindings)
+            workspace, serialized, digest = self._bindings(
+                connection, workflow, bindings, work_item_id
+            )
             lease = connection.execute(
                 "SELECT * FROM wf_workspace_leases WHERE workspace = ?", (workspace,)
             ).fetchone()
@@ -347,6 +359,7 @@ class ExecutionRepository:
                 raise ConflictError(
                     "The workspace has another execution. Explicit reconciliation is required."
                 )
+            require_unique_binding(connection, workflow, _read(serialized))
             execution_id = self._create(
                 connection, workflow, workspace, serialized, digest, actor_id
             )
@@ -558,6 +571,17 @@ class ExecutionRepository:
             raise StoreError("The checkpoint does not belong to its recorded Workflow.")
         reference = ContractRef.from_document(workflow)
         bindings = _read(execution["bindings"])
+        require_current_binding(connection, workflow, bindings)
+        if (
+            "work_item" in bindings
+            and connection.execute(
+                """SELECT 1 FROM agent_sessions
+               WHERE project_id = ? AND state IN ('STARTING', 'RUNNING', 'CANCELLING')
+               LIMIT 1""",
+                (execution["project_id"],),
+            ).fetchone()
+        ):
+            raise ConflictError("An active Agent Session owns this project.")
         root = Path(bindings["workspace"])
         current_identity = None
         for dependency in sorted(_dependency_closure(plans, (identifier,)) - {identifier}):
@@ -706,6 +730,7 @@ class ExecutionRepository:
             raise StoreError(
                 "Record an observed source commit or snapshot before execution effects."
             )
+        bindings = _read(execution["bindings"])
         expected = {
             "workflow_ref": _read(execution["workflow_ref"]),
             "project_ref": workflow["payload"]["project_contract_ref"],
@@ -716,8 +741,14 @@ class ExecutionRepository:
                     for row in workflow["payload"]["technology_decisions"]
                 }.values()
             ),
-            "authorized_workspace": _read(execution["bindings"])["workspace"],
+            "authorized_workspace": bindings["workspace"],
         }
+        if "work_item" in bindings:
+            expected["work_item"] = bindings["work_item"]
+        elif "work_item" in result:
+            raise IntegrityError(
+                "Attempt context cannot assign a Work Item to an unbound execution."
+            )
         if any(key in result and result[key] != value for key, value in expected.items()):
             raise IntegrityError("Attempt context cannot replace the exact registered sources.")
         return {**result, **expected}
@@ -836,7 +867,8 @@ class ExecutionRepository:
         if live and lease["expires_at"] <= self._now():
             raise ConflictError("The workspace lease expired. Inspect effects before resuming.")
         if live:
-            self._fresh(connection, _read(execution["workflow_ref"]))
+            workflow = self._fresh(connection, _read(execution["workflow_ref"]))
+            require_current_binding(connection, workflow, _read(execution["bindings"]))
         return execution, lease
 
     def renew(self, attempt_id, fence, *, owner_id, ttl=120):
@@ -1129,6 +1161,7 @@ class ExecutionRepository:
         actor_id,
         preserve_checkpoint_ids,
         reason,
+        work_item_id=None,
     ):
         """Activate a successor execution while retaining original evidence identities."""
         _text(reason)
@@ -1152,7 +1185,24 @@ class ExecutionRepository:
             new = self._fresh(connection, new_workflow_ref)
             if new["metadata"]["contract_id"] != old["metadata"]["contract_id"]:
                 raise ConflictError("Reconciliation requires the same logical Workflow lineage.")
-            workspace, serialized, digest = self._bindings(new, bindings)
+            old_bindings = _read(execution["bindings"])
+            old_binding = old_bindings.get("work_item")
+            supplied = _read(_json(bindings))
+            if "work_item" in supplied:
+                if old_binding is None or supplied.pop("work_item") != old_binding:
+                    raise ConflictError(
+                        "Reconciliation cannot change a Workflow's Work Item owner."
+                    )
+            if old_binding is not None:
+                if work_item_id is not None and work_item_id != old_binding["work_item_id"]:
+                    raise ConflictError(
+                        "Reconciliation cannot change a Workflow's Work Item owner."
+                    )
+                work_item_id = old_binding["work_item_id"]
+                work = WorkRepository(connection).row(work_item_id)
+                if work["scope_level"] == ScopeLevel.CRITICAL:
+                    remove_predecessor_critical_audits(supplied, old, new)
+            workspace, serialized, digest = self._bindings(connection, new, supplied, work_item_id)
             if (
                 workspace != execution["workspace"]
                 or new["metadata"]["project_id"] != execution["project_id"]
@@ -1160,7 +1210,14 @@ class ExecutionRepository:
                 raise ConflictError(
                     "Reconciliation cannot transfer an execution to another project or workspace."
                 )
+            new_bindings = _read(serialized)
+            if old_binding is None:
+                require_unique_binding(connection, new, new_bindings)
             preserved = set(preserve_checkpoint_ids)
+            if preserved and new_bindings.get("work_item") != old_binding:
+                raise ConflictError(
+                    "New or changed Work Item bindings cannot carry completed checkpoints."
+                )
             plans = {row["checkpoint_id"]: row for row in new["payload"]["checkpoints"]}
             if any(
                 checkpoint_id in plans and not set(plans[checkpoint_id]["depends_on"]) <= preserved
@@ -1175,8 +1232,8 @@ class ExecutionRepository:
                     old,
                     new,
                     identifier,
-                    _read(execution["bindings"]),
-                    _read(serialized),
+                    old_bindings,
+                    new_bindings,
                 ):
                     raise ConflictError(
                         "A carried checkpoint must have demonstrably unchanged sources, obligations and configuration."

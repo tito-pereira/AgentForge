@@ -126,6 +126,7 @@ class SessionSupervisor:
         timeout_seconds=_DEFAULT_TIMEOUT,
         read_only=False,
         executable=None,
+        _check_work=None,
     ):
         if not isinstance(provider, str) or provider not in SUPPORTED_PROVIDERS:
             raise SessionError("Select a supported provider.")
@@ -141,6 +142,7 @@ class SessionSupervisor:
             timeout_seconds=timeout_seconds,
             read_only=read_only,
             executable=self._override(executable),
+            check_work=_check_work,
         )
 
     @staticmethod
@@ -220,6 +222,7 @@ class SessionSupervisor:
         read_only=False,
         executable=None,
         continuation=None,
+        check_work=None,
     ):
         root = _root(_absolute_root(root))
         repository = SessionRepository(root)
@@ -303,6 +306,7 @@ class SessionSupervisor:
                     read_only=read_only,
                     context_projection_id=projection.projection_id,
                     lease_seconds=_LEASE_SECONDS,
+                    _check_work=check_work,
                 )
             else:
                 session = repository.recover(

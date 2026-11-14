@@ -262,6 +262,7 @@ function Projects({ methods, providers }: { methods: string[]; providers: Provid
               key={project.root}
               root={project.root}
               methods={methods}
+              providers={providers}
               onChange={async () => {
                 if (canInspect) {
                   const result = await bridge.project(project.root, false);

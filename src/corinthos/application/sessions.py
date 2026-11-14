@@ -7,6 +7,7 @@ from corinthos.application.workspace import DEFAULT_LIMIT, _page, _page_args
 from corinthos.sessions.repository import SessionRepository
 from corinthos.sessions.supervisor import SessionSupervisor
 from corinthos.sessions.switch import ProviderSwitchService
+from corinthos.work.adaptive import AdaptiveWorkflowService
 
 _SESSION_FIELDS = (
     "session_id",
@@ -81,3 +82,8 @@ class SessionApplication:
 
     def switch_execute(self, root, source_session_id, target_provider, source_generation=None):
         return self.switch.execute(root, source_session_id, target_provider, source_generation)
+
+    def flow_start(self, root, work_item_id, provider, **options):
+        return AdaptiveWorkflowService(root, self.supervisor).start(
+            work_item_id, provider, **options
+        )

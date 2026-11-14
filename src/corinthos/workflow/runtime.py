@@ -284,10 +284,12 @@ class WorkflowRunner:
         canonical_json(bindings)
         return bindings
 
-    def configure(self, workflow_ref, specs, *, actor_id):
+    def configure(self, workflow_ref, specs, *, actor_id, work_item_id=None):
         reference = _reference(workflow_ref)
         bindings = self.prepare_bindings(reference, specs)
-        return self.repository.register(reference, bindings, actor_id=actor_id)
+        return self.repository.register(
+            reference, bindings, actor_id=actor_id, work_item_id=work_item_id
+        )
 
     def audit_request(self, attempt_id):
         """Inspect a retained candidate for a separate independent evaluator."""
@@ -349,6 +351,11 @@ class WorkflowRunner:
             "verification_plan": checkpoint["verification_plan"],
             "allowed_paths": list(spec.allowed_paths),
         }
+        binding = execution["bindings"].get("work_item")
+        work_context = ()
+        if binding is not None:
+            durable["work_item"] = binding
+            work_context = ("Exact operational Work Item binding: " + canonical_json(binding),)
         context = ContextInput(
             self.root,
             ContractRef.from_json(payload["project_contract_ref"]),
@@ -365,6 +372,7 @@ class WorkflowRunner:
                 + canonical_json(spec.to_json()),
                 "Observed pre-effect source identity: "
                 + canonical_json(source["artifact_identity"]),
+                *work_context,
             ),
             task_id,
         )

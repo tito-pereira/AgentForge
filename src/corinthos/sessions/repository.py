@@ -256,6 +256,7 @@ class SessionRepository:
         native_resume=False,
         read_only=True,
         context_projection_id=None,
+        _check_work=None,
     ) -> Session:
         _identifier(work_item_id, _WORK_ID)
         _identifier(provider)
@@ -278,6 +279,8 @@ class SessionRepository:
             if work is None or work["status"] in {"COMPLETED", "CANCELLED"}:
                 raise SessionError("Choose an existing non-terminal Work Item.")
             self._slot(connection)
+            if _check_work is not None:
+                _check_work(connection)
             connection.execute(
                 """INSERT INTO agent_sessions (
                     session_id, project_id, work_item_id, provider, read_only, native_resume,

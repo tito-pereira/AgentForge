@@ -16,6 +16,7 @@ def main(argv: list[str] | None = None) -> int:
         epilog="Run corinthos for Home or corinthos . to open the current project.",
     )
     parser.add_argument("--version", action="version", version=f"corinthos {__version__}")
+    from corinthos.application.adaptive_cli import configure as configure_adaptive
     from corinthos.application.cli import configure as configure_status
     from corinthos.application.cli import configure_workspace
     from corinthos.application.context_cli import configure as configure_context
@@ -32,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
 
     commands = configure_parser(parser)
     configure_workspace(commands)
+    configure_adaptive(commands)
     configure_sessions(commands)
     configure_switch(commands)
     configure_context(commands)

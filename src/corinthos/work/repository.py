@@ -137,6 +137,12 @@ class WorkRepository:
             (status, updated_at, completed_at, work_item_id),
         )
 
+    def save_scope(self, work_item_id: str, scope: ScopeLevel, updated_at: str) -> None:
+        self.connection.execute(
+            "UPDATE work_items SET scope_level = ?, updated_at = ? WHERE work_item_id = ?",
+            (scope, updated_at, work_item_id),
+        )
+
     def counts(self, project_id: str | None) -> WorkCounts:
         rows = self.connection.execute(
             """SELECT status, scope_level, COUNT(*) FROM work_items

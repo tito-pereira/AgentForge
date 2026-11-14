@@ -144,3 +144,8 @@ code {
 .provider-switch { margin-top: 0.8rem; padding-top: 0.7rem; border-top: 1px solid #d4ded7; }
 .provider-switch h5 { margin: 0 0 0.35rem; font-size: 1rem; }
 .provider-switch .field-row { align-items: end; }
+
+.adaptive-workflow { margin-top: 0.8rem; padding-top: 0.7rem; border-top: 1px solid #d4ded7; }
+.adaptive-workflow .field-row { align-items: end; margin: 0.55rem 0; }
+.adaptive-workflow h5 { margin: 0.55rem 0 0.35rem; font-size: 1rem; }
+.adaptive-workflow ul { margin: 0.35rem 0; }

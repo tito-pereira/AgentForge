@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-(function (projectRoot, startSessions) {
+(function (projectRoot, mode) {
   const report = (result) => {
     document.title = "Corinthos desktop smoke: " + result;
   };
@@ -37,6 +37,91 @@
   const revealsSecret = (selector) => (text(document.querySelector(selector)) ?? "").includes(
     "v8-fixture-hidden-value",
   );
+  const adaptiveTask = "Adaptive fixture: add one local check";
+  const adaptiveProject = "Adaptive fixture: inspect project planning";
+
+  async function verifyAdaptive() {
+    const summary = () => document.querySelector(".project-result");
+    const panel = () => document.querySelector(".adaptive-workflow");
+    const facts = (label) => valueFor(panel(), label);
+    const action = (label) => buttonNamed(".adaptive-workflow button", label);
+    const create = () => buttonNamed(".work-form button", "Create Work Item");
+    const treeItem = (objective) => buttonNamed(".work-items .work-tree button", objective);
+    const projectForm = document.querySelector("#project-root");
+    setInput(projectForm, projectRoot);
+    const openProject = () => buttonNamed("form button", "Open project");
+    if (!(await waitFor(() => openProject()?.matches(":enabled")))) return report("fail [adaptive-project]");
+    openProject().form.requestSubmit(openProject());
+    if (!(await waitFor(() => valueFor(summary(), "Storage") === "Current · v9" &&
+      document.querySelector("#work-objective")?.matches(":enabled")))) {
+      return report("fail [adaptive-project]");
+    }
+
+    if (mode === "adaptive-passive") {
+      async function createWork(objective, scope) {
+        setInput(document.querySelector("#work-objective"), objective);
+        setInput(document.querySelector("#work-scope"), scope);
+        setInput(document.querySelector("#work-criteria"), "Keep existing contracts unchanged.");
+        if (!(await waitFor(() => create()?.matches(":enabled")))) return false;
+        create().form.requestSubmit(create());
+        return waitFor(() => treeItem(objective)?.matches(":enabled"));
+      }
+      if (!(await createWork(adaptiveProject, "PROJECT")) || !(await waitFor(() =>
+        facts("Selected scope") === "PROJECT" && facts("Stage") === "PLANNING_REQUIRED" &&
+        facts("Validation") !== "VERIFIED" && !action("Start adaptive workflow") &&
+        text(panel())?.includes("PLANNING"),
+      ))) return report("fail [adaptive-project]");
+      if (!(await createWork(adaptiveTask, "TASK"))) return report("fail [adaptive-task]");
+    } else {
+      if (!(await waitFor(() => treeItem(adaptiveTask)?.matches(":enabled")))) {
+        return report("fail [adaptive-task]");
+      }
+      treeItem(adaptiveTask).click();
+    }
+    if (!(await waitFor(() =>
+      facts("Selected scope") === "TASK" && facts("Recommended scope") === "TASK" &&
+      facts("Minimum required scope") === "TASK" && facts("Stage") === "READY" &&
+      document.querySelector("#adaptive-provider")?.matches(":enabled"),
+    ))) return report("fail [adaptive-task]");
+
+    if (mode === "adaptive-passive") {
+      action("Show Work Item report").click();
+      if (!(await waitFor(() => text(panel()?.querySelector(".adaptive-report p")) === adaptiveTask))) {
+        return report("fail [adaptive-report]");
+      }
+      return report("pass");
+    }
+
+    setInput(document.querySelector("#adaptive-provider"), "codex");
+    if (!(await waitFor(() => action("Start adaptive workflow")?.matches(":enabled")))) {
+      return report("fail [adaptive-session]");
+    }
+    action("Start adaptive workflow").form.requestSubmit(action("Start adaptive workflow"));
+    if (!(await waitFor(() =>
+      facts("Latest session")?.startsWith("session-") && facts("Session provider") === "codex" &&
+      facts("Latest projection")?.startsWith("projection-") && sha256(facts("Projection digest")) &&
+      action("Refresh workflow")?.matches(":enabled"),
+    ))) return report("fail [adaptive-session]");
+    if (!(await waitFor(() => {
+      if (facts("Session state") === "SUCCEEDED") return true;
+      const refresh = action("Refresh workflow");
+      if (refresh?.matches(":enabled")) refresh.click();
+      return false;
+    }))) {
+      return report("fail [adaptive-session]");
+    }
+    if (!(await waitFor(() =>
+      action("Show Work Item report")?.matches(":enabled") && !action("Complete adaptive workflow"),
+    ))) return report("fail [adaptive-report]");
+    action("Show Work Item report").click();
+    if (!(await waitFor(() => {
+      const reportPanel = panel()?.querySelector(".adaptive-report");
+      return text(reportPanel?.querySelector("p")) === adaptiveTask &&
+        valueFor(reportPanel, "Validation") === "NOT_VERIFIED" &&
+        valueFor(summary(), "Workflow") === undefined;
+    }))) return report("fail [adaptive-report]");
+    return report("pass");
+  }
 
   async function verify() {
     const backendReady = await waitFor(() => {
@@ -56,6 +141,8 @@
       );
     });
     if (!backendReady) return report("fail [backend]");
+    if (mode === "adaptive" || mode === "adaptive-passive") return verifyAdaptive();
+    const startSessions = mode === "sessions";
 
     const projectRow = () => Array.from(document.querySelectorAll(".project-list li")).find((row) => {
       const path = text(row.querySelector("code"));

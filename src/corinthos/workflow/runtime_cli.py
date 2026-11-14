@@ -5,6 +5,7 @@ import argparse
 import json
 import secrets
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from corinthos.adapters import AdapterManager
@@ -19,6 +20,8 @@ from corinthos.contracts import (
 from corinthos.project_manager.approval import _terminal, local_actor_id
 from corinthos.project_manager.cli import _answer, _lines, _pick
 from corinthos.project_manager.presentation import render_fields, safe_text
+from corinthos.work import WorkService
+from corinthos.work.model import ScopeLevel
 
 from .cli import _exact, _identifier, _links
 from .execution_repository import ExecutionRepository
@@ -32,6 +35,11 @@ from .verification import (
     ValidationGateConsumer,
     _managed_plan,
     workspace_snapshot,
+)
+from .work_binding import (
+    critical_audit_expectations,
+    remove_predecessor_critical_audits,
+    work_fingerprint,
 )
 
 _CHECKOUT_POLICY = Path("policies/standard.yaml")
@@ -70,6 +78,11 @@ def configure_parser(actions) -> None:
         if name == "reconcile":
             parser.add_argument("contract_id", help="Approved replacement Workflow logical ID.")
             parser.add_argument("--revision", help="Exact replacement revision ID.")
+        if name in {"configure", "reconcile"}:
+            parser.add_argument(
+                "--work-item",
+                help="Explicit PROJECT or CRITICAL Work Item covered by this Workflow.",
+            )
         if name == "recover":
             parser.add_argument(
                 "checkpoint_id", nargs="?", help="Interrupted checkpoint ID, or choose from a list."
@@ -224,20 +237,25 @@ def _choose_audits(store, consumer, workflow, checkpoint_id, existing):
     return tuple(chosen)
 
 
-def _specifications(store, reference, *, existing=None, formal=False):
+def _specifications(store, reference, *, existing=None, formal=False, critical=False):
     workflow = store.get(reference)
     if workflow is None or reference.contract_type != "WORKFLOW":
         raise IntegrityError("Execution configuration requires an exact published Workflow.")
+    mandatory = critical_audit_expectations(workflow) if critical else {}
     specs = []
     for checkpoint in workflow["payload"]["checkpoints"]:
         print("CHECKPOINT EXECUTION CONFIGURATION")
         print(render_fields(checkpoint))
         prior = (existing or {}).get(checkpoint["checkpoint_id"])
+        required = mandatory.get(checkpoint["checkpoint_id"])
         if prior:
             print("Previously bound configuration")
             print(render_fields(prior))
             if _answer("Keep or replace this configuration?", default="keep").lower() == "keep":
-                specs.append(CheckpointSpec.from_json(prior))
+                spec = CheckpointSpec.from_json(prior)
+                if required is not None and required not in spec.audit_expectations:
+                    spec = replace(spec, audit_expectations=(*spec.audit_expectations, required))
+                specs.append(spec)
                 continue
         commands, reviews = [], []
         for item in checkpoint["verification_plan"]:
@@ -266,6 +284,8 @@ def _specifications(store, reference, *, existing=None, formal=False):
         )
         consumer = ValidationGateConsumer(store)
         gates, expectations, _ = consumer.requirements(reference, checkpoint["checkpoint_id"])
+        if required is not None and required not in expectations:
+            expectations = (*expectations, required)
         print("Applicable published independent checkpoint gates")
         print(
             render_fields(
@@ -557,12 +577,24 @@ def run(arguments: argparse.Namespace) -> int:
                 return 1
             if action == "configure":
                 runner = _runner(arguments, store)
+                item = (
+                    WorkService(arguments.root).get(arguments.work_item)
+                    if arguments.work_item is not None
+                    else None
+                )
                 print(
                     render_fields(
                         runner.configure(
                             reference,
-                            _specifications(store, reference, formal=arguments.formal_audits),
+                            _specifications(
+                                store,
+                                reference,
+                                formal=arguments.formal_audits,
+                                critical=item is not None
+                                and item.scope_level is ScopeLevel.CRITICAL,
+                            ),
                             actor_id=actor,
+                            work_item_id=arguments.work_item,
                         )
                     )
                 )
@@ -610,17 +642,41 @@ def run(arguments: argparse.Namespace) -> int:
                 impact = RevisionReconciler(store).compare(execution["workflow_ref"], reference)
                 print("PROPOSED REVISION IMPACT AND HISTORICAL EVIDENCE PRESERVATION")
                 print(render_fields(impact))
+                workflow = store.get(reference)
+                kept = execution["bindings"]
+                bound = kept.get("work_item")
+                if (
+                    bound is not None
+                    and arguments.work_item is not None
+                    and arguments.work_item != bound["work_item_id"]
+                ):
+                    raise IntegrityError(
+                        "Reconciliation cannot change a Workflow's Work Item owner."
+                    )
+                work_item_id = arguments.work_item if bound is None else bound["work_item_id"]
+                item = (
+                    None if work_item_id is None else WorkService(arguments.root).get(work_item_id)
+                )
+                critical = item is not None and item.scope_level is ScopeLevel.CRITICAL
+                if critical:
+                    predecessor = store.get(ContractRef.from_json(execution["workflow_ref"]))
+                    remove_predecessor_critical_audits(kept, predecessor, workflow)
                 specs = _specifications(
                     store,
                     reference,
-                    existing=execution["bindings"]["checkpoints"],
+                    existing=kept["checkpoints"],
                     formal=arguments.formal_audits,
+                    critical=critical,
                 )
                 bindings = runner.prepare_bindings(reference, specs)
-                workflow = store.get(reference)
                 carried = _carry_completed(
                     execution, workflow, bindings, impact["preserved_checkpoint_ids"]
                 )
+                if item is not None and (
+                    bound is None or work_fingerprint(item) != bound["content_sha256"]
+                ):
+                    carried = []
+                    print("New or changed Work Item bindings require fresh checkpoint evidence.")
                 print("EXACT RECONCILIATION DISPOSITION AFTER CONFIGURATION")
                 print(
                     render_fields(
@@ -646,6 +702,7 @@ def run(arguments: argparse.Namespace) -> int:
                             actor_id=actor,
                             preserve_checkpoint_ids=carried,
                             reason=reason,
+                            work_item_id=arguments.work_item,
                         )
                     )
                 )
