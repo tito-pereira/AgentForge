@@ -236,14 +236,25 @@
     });
     if (!targetReady) return report("fail [switch]");
     const targetId = targetSession();
+    const targetProjection = valueFor(switchPanel(), "Target Projection");
+    const targetDigest = valueFor(switchPanel(), "Projection digest");
     const replay = switchButton("Replay switch");
     replay.click();
     if (!(await waitFor(() => targetSession() === targetId &&
           switchButton("Open target session")?.matches(":enabled")))) return report("fail [replay]");
     switchButton("Open target session").click();
-    if (!(await waitFor(() => text(details()?.querySelector("h4")) === targetId && state() === "SUCCEEDED" &&
-          text(details()).includes("Verified switch continuity from the source Handoff")))) {
-      return report("fail [continuity]");
+    if (!(await waitFor(() => text(details()?.querySelector("h4")) === targetId &&
+          state() === "SUCCEEDED" && valueFor(details(), "Provider") === "claude" &&
+          valueFor(details(), "Work Item") === workId))) {
+      return report("fail [target-selection]");
+    }
+    if (!(await waitFor(() => valueFor(details(), "Context projection") === targetProjection &&
+          valueFor(details(), "Context digest") === targetDigest))) {
+      return report("fail [target-context]");
+    }
+    if (!(await waitFor(() => text(details()?.querySelector(".session-events"))?.includes(
+          "Verified switch continuity from the source Handoff")))) {
+      return report("fail [target-output]");
     }
     if (!(await start(90))) return report("fail [start]");
     report("pass");

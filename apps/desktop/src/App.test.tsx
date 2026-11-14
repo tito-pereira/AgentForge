@@ -393,6 +393,43 @@ describe("desktop Agents", () => {
       vi.useRealTimers();
     }
   });
+
+  it("opens the target session even when the Agents background refresh is in flight", async () => {
+    vi.useFakeTimers();
+    try {
+      const target: AgentSession = {
+        ...session, session_id: "session-2", provider: "claude", state: "SUCCEEDED", can_cancel: false,
+      };
+      setup([session, target], () => switchView({
+        stage: "TARGET_SESSION_TERMINAL", source_state: "CANCELLED",
+        target_session_id: target.session_id, target_state: "SUCCEEDED",
+      }));
+      await render();
+      await click("Open Project");
+      await click("Agents");
+      await click(session.session_id);
+      await field("#switch-target-provider", "claude");
+
+      let finishPoll: (value: { sessions: AgentSession[]; next_offset: null }) => void = () => {};
+      invoke.mockReturnValueOnce(new Promise((resolve) => { finishPoll = resolve; }));
+      await act(async () => vi.advanceTimersByTimeAsync(1000));
+      expect(invoke.mock.lastCall?.[1]?.method).toBe("session.list");
+
+      await click("Open target session");
+      expect(host.querySelector<HTMLButtonElement>(".agents > .section-heading button")?.disabled).toBe(true);
+      expect(host.querySelector(".session-detail h4")?.textContent).toBe(session.session_id);
+      await act(async () => finishPoll({ sessions: [session, target], next_offset: null }));
+      expect(host.querySelector(".session-detail h4")?.textContent).toBe(target.session_id);
+      expect(host.querySelector(".session-detail")?.textContent).toContain("StateSUCCEEDED");
+      expect(invoke.mock.calls).toContainEqual(["workspace_request", {
+        method: "session.events",
+        params: { root: legacy.root, session_id: target.session_id, after_sequence: 0, limit: 10 },
+      }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows bounded failures and unmounts on disconnect", async () => {
     setup([]);
     await render();

@@ -61,6 +61,7 @@ export function Agents({ root, methods, providers }: {
   const [recoveryInstruction, setRecoveryInstruction] = useState("");
   const [readOnly, setReadOnly] = useState(false);
   const inFlight = useRef(false);
+  const passivePoll = useRef<Promise<void> | null>(null);
   const canStart = methods.includes("session.start");
   const canGet = methods.includes("session.get");
   const canReadEvents = methods.includes("session.events");
@@ -98,6 +99,7 @@ export function Agents({ root, methods, providers }: {
     setBusy(true);
     setError("");
     try {
+      await passivePoll.current;
       await action();
     } catch {
       setError(message);
@@ -139,9 +141,7 @@ export function Agents({ root, methods, providers }: {
   useEffect(() => {
     if (!shouldPoll) return;
     let mounted = true;
-    const timer = setInterval(async () => {
-      if (inFlight.current) return;
-      inFlight.current = true;
+    async function poll() {
       try {
         const page = await bridge.sessions(root, offset);
         if (!mounted) return;
@@ -156,9 +156,11 @@ export function Agents({ root, methods, providers }: {
         }
       } catch {
         if (mounted) setError("Could not refresh the active sessions. Refresh to retry.");
-      } finally {
-        inFlight.current = false;
       }
+    }
+    const timer = setInterval(() => {
+      if (inFlight.current || passivePoll.current) return;
+      passivePoll.current = poll().finally(() => { passivePoll.current = null; });
     }, 1000);
     return () => {
       mounted = false;
