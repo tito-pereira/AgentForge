@@ -6,7 +6,14 @@ import sys
 from dataclasses import asdict
 from typing import BinaryIO, TextIO
 
-from corinthos.application import context, project_status, providers_status, version, workspace
+from corinthos.application import (
+    adaptive,
+    context,
+    project_status,
+    providers_status,
+    version,
+    workspace,
+)
 from corinthos.application.sessions import SessionApplication
 from corinthos.contracts import ContractError
 
@@ -70,6 +77,15 @@ _V2_OPERATIONS = {
         ("root", "work_item_id"),
         _PAGE_OPTIONS,
     ),
+    "scope.assess": (adaptive.scope_assess, ("root", "work_item_id"), ()),
+    "scope.set": (
+        adaptive.scope_set,
+        ("root", "work_item_id", "scope_level", "expected_updated_at"),
+        ("confirm_downgrade",),
+    ),
+    "flow.status": (adaptive.flow_status, ("root", "work_item_id"), ()),
+    "flow.complete": (adaptive.flow_complete, ("root", "work_item_id", "expected_updated_at"), ()),
+    "work.report": (adaptive.work_report, ("root", "work_item_id"), ()),
 }
 _SESSION_OPERATIONS = {
     "session.start": (
@@ -92,6 +108,11 @@ _SESSION_OPERATIONS = {
         ("root", "source_session_id", "target_provider"),
         ("source_generation",),
     ),
+    "flow.start": (
+        "flow_start",
+        ("root", "work_item_id", "provider"),
+        ("instruction", "timeout_seconds", "read_only"),
+    ),
 }
 _MUTATIONS = {
     "context.create",
@@ -104,6 +125,9 @@ _MUTATIONS = {
     "session.cancel",
     "session.recover",
     "switch.execute",
+    "scope.set",
+    "flow.start",
+    "flow.complete",
 }
 _ERROR_MESSAGES = {
     -32700: "Parse error",

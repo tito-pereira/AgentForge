@@ -50,6 +50,8 @@ def _pagination(command):
 
 
 def configure_workspace(commands) -> None:
+    from corinthos.application.adaptive import work_report
+
     projects = commands.add_parser("projects", help="Read the local Project Registry.")
     projects_list = projects.add_subparsers(dest="projects_action", required=True).add_parser(
         "list", help="List known and recent projects."
@@ -61,6 +63,12 @@ def configure_workspace(commands) -> None:
 
     work = commands.add_parser("work", help="Manage planning records for an initialized project.")
     actions = work.add_subparsers(dest="work_action", required=True)
+    report = actions.add_parser("report", help="Read a derived Work Item report.")
+    report.add_argument("--root", default=str(Path.cwd()))
+    report.add_argument("--work", dest="work_item_id", required=True)
+    report.set_defaults(
+        handler=_workspace, operation=work_report, arguments=("root", "work_item_id")
+    )
     for name, operation in (
         ("create", workspace.work_create),
         ("list", workspace.work_list),

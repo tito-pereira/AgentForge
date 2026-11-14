@@ -1259,6 +1259,262 @@
           "id"
         ]
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "scope.assess"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              }
+            },
+            "required": [
+              "root",
+              "work_item_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "scope.set"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              },
+              "scope_level": {
+                "enum": [
+                  "TASK",
+                  "CHANGE",
+                  "PROJECT",
+                  "CRITICAL"
+                ]
+              },
+              "expected_updated_at": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "confirm_downgrade": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "root",
+              "work_item_id",
+              "scope_level",
+              "expected_updated_at"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params",
+          "id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "flow.status"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              }
+            },
+            "required": [
+              "root",
+              "work_item_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "flow.start"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              },
+              "provider": {
+                "enum": [
+                  "codex",
+                  "claude"
+                ]
+              },
+              "instruction": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "timeout_seconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3600
+              },
+              "read_only": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "root",
+              "work_item_id",
+              "provider"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params",
+          "id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "flow.complete"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              },
+              "expected_updated_at": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            },
+            "required": [
+              "root",
+              "work_item_id",
+              "expected_updated_at"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params",
+          "id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "work.report"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "work_item_id": {
+                "type": "string",
+                "pattern": "^work-[0-9a-f]{32}$"
+              }
+            },
+            "required": [
+              "root",
+              "work_item_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
     }
   ]
 }

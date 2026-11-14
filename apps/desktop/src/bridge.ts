@@ -67,6 +67,46 @@ export interface WorkNode extends Omit<WorkItem, "updated_at" | "allowed_transit
   depth: number;
 }
 
+export const workScopes = ["TASK", "CHANGE", "PROJECT", "CRITICAL"] as const;
+export type WorkScope = typeof workScopes[number];
+
+export interface ScopeAssessment {
+  work_item_id: string;
+  selected_scope: WorkScope;
+  recommended_scope: WorkScope;
+  minimum_required_scope: WorkScope;
+  policy_version: number | string;
+  signals: string[];
+  unknowns: string[];
+}
+
+export interface FlowView extends ScopeAssessment {
+  flow_kind: WorkScope;
+  stage: string;
+  gates: { id: string; state: string }[];
+  blockers: string[];
+  next_actions: string[];
+  validation_state: string;
+  validation_policy: string | null;
+  workflow_ref: ContractReference | null;
+  execution: { execution_id: string; state: string } | null;
+  latest_session: { session_id: string; provider: string; state: string; run_generation: number } | null;
+  latest_projection: { projection_id: string; projection_digest: string } | null;
+  latest_handoff: { handoff_id: string; digest: string } | null;
+  provider_continuity: { source_provider: string; target_provider: string; handoff_id: string } | null;
+  report_status: string;
+  can_start: boolean;
+  can_complete: boolean;
+}
+
+export interface WorkReport {
+  work_item_id: string;
+  flow: FlowView;
+  objective: string;
+  acceptance_criteria: string[];
+  overall_status: string;
+}
+
 interface WorkInput {
   objective: string;
   scope_level: string;
@@ -207,6 +247,20 @@ export const bridge = {
       expected_updated_at: item.updated_at,
       status,
     }),
+  scopeSet: (root: string, item: WorkItem, scope_level: WorkScope, confirm_downgrade: boolean) =>
+    request<ScopeAssessment & { updated_at: string }>("scope.set", {
+      root, work_item_id: item.work_item_id, expected_updated_at: item.updated_at, scope_level, confirm_downgrade,
+    }),
+  flowStatus: (root: string, work_item_id: string) =>
+    request<FlowView>("flow.status", { root, work_item_id }),
+  flowStart: (root: string, work_item_id: string, options: Omit<SessionStart, "work_item_id">) =>
+    request<FlowView>("flow.start", { root, work_item_id, ...options }),
+  flowComplete: (root: string, item: WorkItem) =>
+    request<FlowView>("flow.complete", {
+      root, work_item_id: item.work_item_id, expected_updated_at: item.updated_at,
+    }),
+  workReport: (root: string, work_item_id: string) =>
+    request<WorkReport>("work.report", { root, work_item_id }),
   sessions: (root: string, offset: number) =>
     request<{ sessions: AgentSession[]; next_offset: number | null }>("session.list", { root, offset }),
   sessionGet: (root: string, session_id: string) =>

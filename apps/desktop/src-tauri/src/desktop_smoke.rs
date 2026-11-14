@@ -32,9 +32,14 @@ pub fn with_probe<'a, R: Runtime, M: tauri::Manager<R>>(
     {
         return Err(invalid_fixture());
     }
-    let active = env::var_os("CORINTHOS_DESKTOP_SMOKE_START").is_some_and(|value| value == "1");
+    let mode = match env::var("CORINTHOS_DESKTOP_SMOKE_START").as_deref() {
+        Ok("adaptive") => "adaptive",
+        Ok("adaptive-passive") => "adaptive-passive",
+        Ok("1") => "sessions",
+        _ => "passive",
+    };
     let script = format!(
-        "({})({}, {active});",
+        "({})({}, \"{mode}\");",
         include_str!("../tests/desktop-smoke.js"),
         serde_json::to_string(project_text)?
     );
@@ -72,6 +77,15 @@ pub fn with_probe<'a, R: Runtime, M: tauri::Manager<R>>(
                 "Corinthos desktop smoke: fail [target-selection]" => "fail [target-selection]\n",
                 "Corinthos desktop smoke: fail [target-context]" => "fail [target-context]\n",
                 "Corinthos desktop smoke: fail [target-output]" => "fail [target-output]\n",
+                "Corinthos desktop smoke: fail [adaptive-open-form]" => "fail [adaptive-open-form]\n",
+                "Corinthos desktop smoke: fail [adaptive-open-project]" => "fail [adaptive-open-project]\n",
+                "Corinthos desktop smoke: fail [adaptive-storage]" => "fail [adaptive-storage]\n",
+                "Corinthos desktop smoke: fail [adaptive-work-view]" => "fail [adaptive-work-view]\n",
+                "Corinthos desktop smoke: fail [adaptive-create-project]" => "fail [adaptive-create-project]\n",
+                "Corinthos desktop smoke: fail [adaptive-planning-gate]" => "fail [adaptive-planning-gate]\n",
+                "Corinthos desktop smoke: fail [adaptive-task]" => "fail [adaptive-task]\n",
+                "Corinthos desktop smoke: fail [adaptive-session]" => "fail [adaptive-session]\n",
+                "Corinthos desktop smoke: fail [adaptive-report]" => "fail [adaptive-report]\n",
                 "Corinthos desktop smoke: fail [unexpected]" => "fail [unexpected]\n",
                 _ => return,
             };

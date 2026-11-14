@@ -143,8 +143,7 @@ class WorkService:
                 else None
             )
 
-    @contextmanager
-    def _write(self, *, create: bool = False) -> Iterator[WorkRepository]:
+    def _write_store(self, *, create: bool = False) -> ContractStore:
         root = _root(_absolute_root(self.root))
         if not os.path.lexists(root / ".corinthos"):
             raise WorkError("Initialize or open the project before creating Work Items.")
@@ -153,8 +152,11 @@ class WorkService:
             not create or _read_profile(private / "bootstrap.json") is None
         ):
             raise WorkError("Initialize or open the project before changing Work Items.")
-        store = ContractStore(root)
-        with store._transaction() as connection:
+        return ContractStore(root)
+
+    @contextmanager
+    def _write(self, *, create: bool = False) -> Iterator[WorkRepository]:
+        with self._write_store(create=create)._transaction() as connection:
             yield WorkRepository(connection)
 
     @staticmethod
@@ -370,6 +372,7 @@ class WorkService:
         status: str,
         *,
         expected_updated_at: str | None = None,
+        _guard=None,
     ) -> WorkItem:
         _id(work_item_id, "Work Item ID", _WORK_ID)
         status = _choice(WorkStatus, status, "Work Item status")
@@ -377,6 +380,8 @@ class WorkService:
             row = self._mutable(repository, work_item_id, expected_updated_at)
             if status not in TRANSITIONS[WorkStatus(row["status"])]:
                 raise WorkError("Invalid Work Item status transition.")
+            if _guard is not None:
+                _guard(repository.connection, repository.item(row))
             timestamp = _timestamp(row["updated_at"])
             completed_at = (
                 timestamp if status in {WorkStatus.COMPLETED, WorkStatus.CANCELLED} else None

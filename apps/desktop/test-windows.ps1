@@ -19,7 +19,7 @@ function Invoke-DesktopFixture([string] $Stage) {
     $receipt = Join-Path $root "desktop-$Stage.txt"
     $env:CORINTHOS_DESKTOP_SMOKE_PROJECT = $project
     $env:CORINTHOS_DESKTOP_SMOKE_RECEIPT = $receipt
-    $env:CORINTHOS_DESKTOP_SMOKE_START = if ($Stage -eq 'sessions') { '1' } else { '0' }
+    $env:CORINTHOS_DESKTOP_SMOKE_START = if ($Stage -eq 'sessions') { '1' } else { $Stage }
     $script:desktopProcess = Start-Process -FilePath $desktopPath -WorkingDirectory $root -PassThru -WindowStyle Normal
     $deadline = [DateTime]::UtcNow.AddSeconds(150)
     while (![IO.File]::Exists($receipt) -and [DateTime]::UtcNow -lt $deadline) {
@@ -166,6 +166,13 @@ internal static class Provider {
             if (input.Contains("v8-fixture-hidden-value") ||
                 !input.Contains("projection_id") ||
                 !input.Contains("projection_digest")) return 3;
+            if (input.Contains("Adaptive fixture: add one local check")) {
+                File.AppendAllText(log, "adaptive-launch" + Environment.NewLine);
+                Console.WriteLine("{\"type\":\"thread.started\",\"thread_id\":\"cccccccc-cccc-4ccc-8ccc-cccccccccccc\"}");
+                Console.WriteLine("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Adaptive fixture observation\"}}");
+                Console.WriteLine("{\"type\":\"turn.completed\",\"usage\":{\"output_tokens\":1}}");
+                return 0;
+            }
             File.AppendAllText(log, "launch" + Environment.NewLine);
             using (var child = Process.Start(new ProcessStartInfo {
                 FileName = Assembly.GetExecutingAssembly().Location,
@@ -383,6 +390,38 @@ assert current[1:] == backup[1:]
 '@
     [IO.File]::WriteAllText($checkMigrationPath, $checkMigration)
     Invoke-PrivatePython $paths.Install @($checkMigrationPath, $database, $backups[0].FullName)
+
+    $project = Join-Path $root 'adaptive-project'
+    $null = Invoke-PrivatePython $paths.Install @('-m', 'corinthos', 'init', $project)
+    Invoke-PrivatePython $paths.Install @('-c', 'import sys; from corinthos.contracts import ContractStore; ContractStore(sys.argv[1])', $project)
+    $codexBefore = (Get-FileHash -LiteralPath $configuredLog).Hash
+    $claudeBefore = (Get-FileHash -LiteralPath $claudeLog).Hash
+    Invoke-DesktopFixture 'adaptive-passive'
+    Assert-Spike (((Get-FileHash -LiteralPath $configuredLog).Hash -eq $codexBefore) -and
+        ((Get-FileHash -LiteralPath $claudeLog).Hash -eq $claudeBefore) -and ![IO.File]::Exists($autoLog)) 'Reading adaptive gates and report started a native probe.'
+    Invoke-DesktopFixture 'adaptive'
+    Assert-Spike (@([IO.File]::ReadAllLines($configuredLog) | Where-Object { $_ -eq 'adaptive-launch' }).Count -eq 1 -and
+        ((Get-FileHash -LiteralPath $claudeLog).Hash -eq $claudeBefore) -and ![IO.File]::Exists($autoLog)) 'Adaptive start did not launch exactly the selected TASK provider.'
+    $assertAdaptive = @'
+import sqlite3, sys
+from contextlib import closing
+from pathlib import Path
+
+with closing(sqlite3.connect(Path(sys.argv[1]).as_uri() + "?mode=ro", uri=True)) as db:
+    assert db.execute("PRAGMA user_version").fetchone() == (9,)
+    assert db.execute("SELECT COUNT(*) FROM contracts WHERE contract_type = 'WORKFLOW'").fetchone() == (0,)
+    assert db.execute("SELECT COUNT(*) FROM wf_executions").fetchone() == (0,)
+    assert db.execute(
+        "SELECT w.scope_level, w.status, a.provider, a.state, a.cleanup_unconfirmed, LENGTH(p.projection_digest) "
+        "FROM agent_sessions a JOIN work_items w USING(work_item_id) "
+        "JOIN context_projections p ON p.projection_id = a.context_projection_id"
+    ).fetchall() == [("TASK", "OPEN", "codex", "SUCCEEDED", 0, 64)]
+    assert db.execute("SELECT COUNT(*) FROM agent_sessions").fetchone() == (1,)
+'@
+    $adaptiveCheck = Join-Path $work 'check_adaptive.py'
+    [IO.File]::WriteAllText($adaptiveCheck, $assertAdaptive)
+    Invoke-PrivatePython $paths.Install @($adaptiveCheck, (Join-Path $project '.corinthos\state.db'))
+    Write-Host 'Actual WebView displayed passive PROJECT planning and TASK scope/report without probing. Explicit TASK execution reused Context and Agent Sessions and produced a report without publishing a Workflow.'
 
     $prior = [IO.File]::ReadAllLines($configuredLog).Length
     $null = Invoke-PrivatePython $paths.Install @('-m','corinthos','adapters','refresh')

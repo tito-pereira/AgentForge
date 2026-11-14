@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import type { AgentSession, BackendSnapshot, ContextProjection, ProjectEntry, ProjectSummary, SessionHandoff, SwitchView, WorkItem } from "./bridge";
+import type { AgentSession, BackendSnapshot, ContextProjection, FlowView, ProjectEntry, ProjectSummary, SessionHandoff, SwitchView, WorkItem, WorkScope } from "./bridge";
 
 const { invoke, listen } = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
@@ -197,6 +197,125 @@ describe("desktop Home and Projects", () => {
     expect(host.textContent).toContain("Project browsing is unavailable");
     expect(host.querySelector<HTMLInputElement>("#project-root")?.disabled).toBe(true);
     expect(invoke.mock.calls).toEqual([["backend_snapshot"]]);
+  });
+});
+
+describe("desktop adaptive workflow", () => {
+  const flowMethods = [
+    ...methods, "scope.assess", "scope.set", "flow.status", "flow.start", "flow.complete", "work.report",
+  ];
+  const task = { ...item, scope_level: "TASK" };
+  const project = { ...item, work_item_id: "work_2", scope_level: "PROJECT", objective: "Plan the project" };
+
+  function flowFor(work: WorkItem, changes: Partial<FlowView> = {}): FlowView {
+    const scope = work.scope_level as WorkScope;
+    return {
+      work_item_id: work.work_item_id, selected_scope: scope, recommended_scope: "TASK", minimum_required_scope: "TASK",
+      policy_version: 1, flow_kind: scope, stage: scope === "PROJECT" ? "PLANNING_REQUIRED" : "READY",
+      signals: ["NO_APPROVED_WORKFLOW"], unknowns: ["VALIDATION_POLICY_OPAQUE"],
+      gates: [{ id: "VALIDATION", state: "NOT_VERIFIED" }], blockers: [],
+      next_actions: scope === "PROJECT" ? ["Review existing Project Manager and Workflow planning."] : [],
+      validation_state: "NOT_VERIFIED", validation_policy: null, workflow_ref: null, execution: null,
+      latest_session: null, latest_projection: null, latest_handoff: null, provider_continuity: null, report_status: "NOT_VERIFIED",
+      can_start: scope !== "PROJECT", can_complete: false, ...changes,
+    };
+  }
+
+  function setup(initial: WorkItem, changes: Partial<FlowView> = {}) {
+    let work = initial;
+    let flow = flowFor(work, changes);
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "backend_snapshot") return { ...ready, handshake: { ...ready.handshake, methods: flowMethods } };
+      switch (payload.method) {
+        case "projects.list": return { projects: [legacy], next_offset: null };
+        case "project.open":
+        case "project.summary": return { ...summary, schema_version: 9 };
+        case "work.tree": return { nodes: [{ ...work, depth: 0 }], next_offset: null };
+        case "work.get": return work;
+        case "flow.status": return flow;
+        case "scope.set":
+          work = { ...work, scope_level: payload.params.scope_level, updated_at: "2026-02-02T00:00:00Z" };
+          flow = flowFor(work);
+          return { ...flow, updated_at: work.updated_at };
+        case "flow.start":
+          flow = flowFor(work, {
+            stage: "EXECUTING", can_start: false,
+            latest_session: { session_id: "session-1", provider: "codex", state: "RUNNING", run_generation: 1 },
+            latest_projection: { projection_id: "projection-1", projection_digest: "a".repeat(64) },
+          });
+          return flow;
+        case "work.report": return {
+          work_item_id: work.work_item_id, flow, overall_status: "NOT_VERIFIED",
+          objective: work.objective, acceptance_criteria: ["<b>Keep exact evidence.</b>"],
+        };
+        case "flow.complete":
+          work = { ...work, status: "COMPLETED", updated_at: "2026-02-02T00:00:00Z" };
+          flow = flowFor(work, { stage: "TERMINAL", can_start: false, validation_state: "VERIFIED" });
+          return flow;
+        default: throw new Error("Unexpected method");
+      }
+    });
+  }
+
+  async function pickWork(initial: WorkItem) {
+    await render();
+    await click("Open Project");
+    await click(initial.objective);
+  }
+
+  const actions = () => invoke.mock.calls.map(([_command, payload]) => payload?.method);
+
+  it("assesses a selected TASK passively and starts and reads the report only on explicit actions", async () => {
+    setup(task);
+    await pickWork(task);
+    const panel = () => host.querySelector(".adaptive-workflow");
+    expect(panel()?.textContent).toContain("Minimum required scopeTASK");
+    expect(panel()?.textContent).toContain("StageREADY");
+    expect(actions().filter((value) => value?.startsWith("flow."))).toEqual(["flow.status"]);
+    await field("#adaptive-provider", "codex");
+    expect(actions()).not.toContain("flow.start");
+    await click("Start adaptive workflow");
+    expect(invoke.mock.calls).toContainEqual(["workspace_request", { method: "flow.start", params: {
+      root: legacy.root, work_item_id: task.work_item_id, provider: "codex", timeout_seconds: 120, read_only: false,
+    } }]);
+    expect(panel()?.textContent).toContain("Latest projectionprojection-1");
+    expect(panel()?.textContent).toContain("Latest sessionsession-1");
+    expect(panel()?.textContent).not.toContain("Complete adaptive workflow");
+    await click("Show Work Item report");
+    expect(panel()?.querySelector(".adaptive-report")?.textContent).toContain("<b>Keep exact evidence.</b>");
+    expect(panel()?.querySelector(".adaptive-report b")).toBeNull();
+  });
+
+  it("shows the PROJECT planning gate and sends a downgrade only after confirmation", async () => {
+    setup(project);
+    await pickWork(project);
+    const panel = () => host.querySelector(".adaptive-workflow");
+    expect(panel()?.textContent).toContain("StagePLANNING_REQUIRED");
+    expect(panel()?.textContent).toContain("Project Manager");
+    expect(panel()?.textContent).not.toContain("Start adaptive workflow");
+    await field("#adaptive-scope", "CHANGE");
+    await click("Update scope");
+    expect(actions()).not.toContain("scope.set");
+    const confirmation = panel()?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    await act(async () => confirmation?.click());
+    await click("Update scope");
+    expect(invoke.mock.calls).toContainEqual(["workspace_request", { method: "scope.set", params: {
+      root: legacy.root, work_item_id: project.work_item_id, expected_updated_at: project.updated_at,
+      scope_level: "CHANGE", confirm_downgrade: true,
+    } }]);
+    expect(panel()?.textContent).toContain("Selected scopeCHANGE");
+  });
+
+  it("completes only after the backend grants eligibility and the operator acts", async () => {
+    const active = { ...task, status: "ACTIVE" };
+    setup(active, { can_start: false, can_complete: true, stage: "COMPLETION_READY", validation_state: "VERIFIED" });
+    await pickWork(active);
+    expect(actions()).not.toContain("flow.complete");
+    await click("Complete adaptive workflow");
+    expect(invoke.mock.calls).toContainEqual(["workspace_request", { method: "flow.complete", params: {
+      root: legacy.root, work_item_id: active.work_item_id, expected_updated_at: active.updated_at,
+    } }]);
+    expect(host.querySelector(".adaptive-workflow")?.textContent).toContain("StageTERMINAL");
   });
 });
 
